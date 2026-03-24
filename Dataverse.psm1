@@ -1308,3 +1308,532 @@ function Remove-PSDVTableItem {
 
 # Create aliases for backward compatibility
 New-Alias -Name Delete-PSDVTableItem -Value Remove-PSDVTableItem -Force
+
+
+function New-PSDVTableWebHook {
+    <#
+    .SYNOPSIS
+    Creates a new webhook registration for a Dataverse table.
+
+    .DESCRIPTION
+    New-PSDVTableWebHook registers a webhook endpoint to be triggered when specified operations occur on a Dataverse table.
+    The function creates a service endpoint, retrieves the necessary SDK message and filter IDs, and then creates the 
+    webhook step registration. This enables real-time notifications to external systems when data changes occur.
+
+    .PARAMETER Table
+    The logical name of the Dataverse table to monitor for webhook triggers.
+
+    .PARAMETER WebHookName
+    The display name for the webhook registration.
+
+    .PARAMETER TriggerUri
+    The HTTP endpoint URL that will receive webhook notifications when the trigger events occur.
+
+    .PARAMETER Operation
+    The SDK message operation to monitor. Valid values are Create, Update, Delete, or Retrieve. Default is Create.
+
+    .PARAMETER AuthSecret
+    The optional authentication secret for webhook security. This will be passed in the x-dv-webhook-secret header.
+
+    .PARAMETER Stage
+    The execution stage for the webhook. Valid values are PreValidation (10), PreOperation (20), MainOperation (30), or PostOperation (40). Default is PostOperation.
+
+    .PARAMETER Rank
+    The execution order rank within the stage. Lower numbers execute first. Default is 1.
+
+    .PARAMETER Mode
+    The execution mode. Valid values are Synchronous (0) or Asynchronous (1). Default is Asynchronous.
+
+    .PARAMETER SupportedDeployment
+    The deployment scope. Valid values are ServerOnly (0), ClientOnly (1), or Both (2). Default is ServerOnly.
+
+    .EXAMPLE
+    New-PSDVTableWebHook -Table "account" -WebHookName "Account Changes Monitor" -TriggerUri "https://myapp.azurewebsites.net/api/DataverseTrigger" -Operation "Create"
+
+    Creates a webhook to monitor account creation events.
+
+    .EXAMPLE
+    New-PSDVTableWebHook -Table "spork_sporkuserrequest" -WebHookName "SPORK Users New Record WebHook" -TriggerUri "https://sporkapps.azurewebsites.net/api/DataverseTrigger" -Operation "Create" -AuthSecret "DontTell"
+
+    Creates a webhook with authentication secret for a custom table.
+
+    .EXAMPLE
+    New-PSDVTableWebHook -Table "contact" -WebHookName "Contact Update Monitor" -TriggerUri "https://myapp.com/webhook" -Operation "Update" -Stage "PreOperation" -Mode "Synchronous"
+
+    Creates a synchronous webhook that fires before contact updates are processed.
+    #>
+
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [String]
+        $Table,
+
+        [Parameter(Mandatory)]
+        [String]
+        $WebHookName,
+
+        [Parameter(Mandatory)]
+        [String]
+        $TriggerUri,
+
+        [Parameter()]
+        [ValidateSet('Create', 'Update', 'Delete', 'Retrieve')]
+        [String]
+        $Operation = 'Create',
+
+        [Parameter()]
+        [String]
+        $AuthSecret,
+
+        [Parameter()]
+        [ValidateSet('PreValidation', 'PreOperation', 'MainOperation', 'PostOperation')]
+        [String]
+        $Stage = 'PostOperation',
+
+        [Parameter()]
+        [ValidateRange(1, 2147483647)]
+        [Int32]
+        $Rank = 1,
+
+        [Parameter()]
+        [ValidateSet('Synchronous', 'Asynchronous')]
+        [String]
+        $Mode = 'Asynchronous',
+
+        [Parameter()]
+        [ValidateSet('ServerOnly', 'ClientOnly', 'Both')]
+        [String]
+        $SupportedDeployment = 'ServerOnly'
+    )
+
+    if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
+        throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
+    }
+
+    # Convert stage names to numeric values
+    $stageMap = @{
+        'PreValidation' = 10
+        'PreOperation' = 20
+        'MainOperation' = 30
+        'PostOperation' = 40
+    }
+
+    # Convert mode names to numeric values  
+    $modeMap = @{
+        'Synchronous' = 0
+        'Asynchronous' = 1
+    }
+
+    # Convert deployment names to numeric values
+    $deploymentMap = @{
+        'ServerOnly' = 0
+        'ClientOnly' = 1
+        'Both' = 2
+    }
+
+    # Check for existing webhook with same table, operation, and URL
+    Write-Verbose "Checking for existing webhook with same table ($Table), operation ($Operation), and URL ($TriggerUri)"
+    try {
+        $existingWebhookQuery = "eventhandler_serviceendpoint ne null and eventhandler_serviceendpoint/serviceendpointid ne null and sdkmessagefilterid/primaryobjecttypecode eq '$Table' and sdkmessageid/name eq '$Operation' and eventhandler_serviceendpoint/url eq '$TriggerUri'"
+        $existingWebhook = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessageprocessingsteps" -Select "sdkmessageprocessingstepid,name" -Expand "eventhandler_serviceendpoint(`$select=serviceendpointid,name,url)" -Filter $existingWebhookQuery
+        
+        if ($existingWebhook -and $existingWebhook.Count -gt 0) {
+            $existingWebhookName = if ($existingWebhook[0].eventhandler_serviceendpoint.name) { $existingWebhook[0].eventhandler_serviceendpoint.name } else { "Unknown" }
+            throw "A webhook already exists for table '$Table', operation '$Operation', and URL '$TriggerUri'. Existing webhook: $existingWebhookName"
+        }
+        
+        Write-Verbose "No duplicate webhook found. Proceeding with webhook creation."
+    }
+    catch {
+        if ($_.Exception.Message -like "*webhook already exists*") {
+            throw
+        }
+        Write-Verbose "Error checking for duplicates (proceeding anyway): $($_.Exception.Message)"
+    }
+
+    try {
+        # Step 1: Create service endpoint
+        Write-Verbose "Creating service endpoint for webhook: $WebHookName"
+        
+        $serviceEndPointSetup = @{
+            "name" = $WebHookName
+            "url" = $TriggerUri
+            "contract" = 8  # WebHook contract type
+            "authtype" = 5  # HttpHeader authentication
+        }
+
+        if ($PSBoundParameters.ContainsKey('AuthSecret')) {
+            $serviceEndPointSetup["authvalue"] = "<settings><setting name=""x-dv-webhook-secret"" value=""$AuthSecret""/></settings>"
+        } else {
+            $serviceEndPointSetup["authvalue"] = "<settings></settings>"
+        }
+
+        if ($PSCmdlet.ShouldProcess($WebHookName, "Create service endpoint")) {
+            $serviceEndpointHeaders = @{
+                'Prefer' = 'odata.include-annotations="*",return=representation'
+            }
+            $serviceEndpoint = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/serviceendpoints" -Method Post -Body $serviceEndPointSetup -Headers $serviceEndpointHeaders
+            Write-Verbose "Service endpoint created with ID: $($serviceEndpoint.serviceendpointid)"
+        } else {
+            Write-Verbose "Would create service endpoint for: $WebHookName"
+            return
+        }
+
+        # Step 2: Get SDK message ID
+        Write-Verbose "Retrieving SDK message ID for operation: $Operation"
+        $sdkMessage = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessages" -Select "sdkmessageid,name" -Filter "name eq '$Operation'"
+        
+        if (-not $sdkMessage -or $sdkMessage.Count -eq 0) {
+            throw "SDK message '$Operation' not found"
+        }
+        
+        $sdkMessageId = $sdkMessage.sdkmessageid
+        Write-Verbose "SDK message ID: $sdkMessageId"
+
+        # Step 3: Get SDK message filter ID
+        Write-Verbose "Retrieving SDK message filter for table '$Table' and operation '$Operation'"
+        $sdkMessageFilter = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessagefilters" -Select "sdkmessagefilterid,primaryobjecttypecode" -Filter "primaryobjecttypecode eq '$Table' and sdkmessageid/name eq '$Operation'"
+        
+        if (-not $sdkMessageFilter -or $sdkMessageFilter.Count -eq 0) {
+            throw "SDK message filter for table '$Table' and operation '$Operation' not found"
+        }
+        
+        $sdkMessageFilterId = $sdkMessageFilter.sdkmessagefilterid
+        Write-Verbose "SDK message filter ID: $sdkMessageFilterId"
+
+        # Step 4: Create webhook step
+        Write-Verbose "Creating webhook step registration"
+        $webhookStepName = "$($WebHookName.ToLower().Replace(' ', '.')).$Table.$($Operation.ToLower())"
+        
+        $webhookStep = @{
+            "name" = $webhookStepName
+            "description" = "$WebHookName - $Table - $Operation"
+            "stage" = $stageMap[$Stage]
+            "rank" = $Rank
+            "mode" = $modeMap[$Mode]
+            "supporteddeployment" = $deploymentMap[$SupportedDeployment]
+            "eventhandler_serviceendpoint@odata.bind" = "/serviceendpoints($($serviceEndpoint.serviceendpointid))"
+            "sdkmessageid@odata.bind" = "/sdkmessages($sdkMessageId)"
+            "sdkmessagefilterid@odata.bind" = "/sdkmessagefilters($sdkMessageFilterId)"
+        }
+
+        if ($PSCmdlet.ShouldProcess($webhookStepName, "Create webhook step")) {
+            $webhookStepHeaders = @{
+                'Prefer' = 'odata.include-annotations="*",return=representation'
+            }
+            $webhookStepResult = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessageprocessingsteps" -Method Post -Body $webhookStep -Headers $webhookStepHeaders
+            Write-Verbose "Webhook step created with ID: $($webhookStepResult.sdkmessageprocessingstepid)"
+            
+            # Return webhook registration details
+            return [PSCustomObject]@{
+                WebHookName = $WebHookName
+                ServiceEndpointId = $serviceEndpoint.serviceendpointid
+                WebHookStepId = $webhookStepResult.sdkmessageprocessingstepid
+                Table = $Table
+                Operation = $Operation
+                TriggerUri = $TriggerUri
+                Stage = $Stage
+                Mode = $Mode
+                Rank = $Rank
+                SupportedDeployment = $SupportedDeployment
+            }
+        }
+    }
+    catch {
+        throw "Error creating webhook '$WebHookName': $($_.Exception.Message)"
+    }
+}
+
+
+function Get-PSDVTableWebHook {
+    <#
+    .SYNOPSIS
+    Retrieves registered webhooks for a Dataverse table.
+
+    .DESCRIPTION
+    Get-PSDVTableWebHook queries the Dataverse environment to find webhook registrations for a specified table.
+    It returns detailed information about each webhook including the service endpoint details, execution settings,
+    and associated SDK message information. By default, system and hidden webhooks are filtered out to show only
+    user-created webhooks. This function is useful for auditing webhook configurations and troubleshooting issues.
+
+    .PARAMETER Table
+    The logical name of the Dataverse table to retrieve webhook registrations for.
+
+    .PARAMETER Operation
+    Optional filter to return webhooks for a specific operation only. Valid values are Create, Update, Delete, or Retrieve.
+
+    .PARAMETER Url
+    Optional filter to return webhooks for a specific endpoint URL only.
+
+    .PARAMETER Stage
+    Optional filter to return webhooks for a specific execution stage only. Valid values are PreValidation, PreOperation, MainOperation, or PostOperation.
+
+    .PARAMETER Name
+    Optional filter to return webhooks with names containing the specified text (case-insensitive partial match).
+
+    .PARAMETER IncludeSystemWebHooks
+    When specified, includes system-level and hidden webhooks in the results. By default, these are filtered out.
+
+    .EXAMPLE
+    Get-PSDVTableWebHook -Table "account"
+
+    Retrieves user-created webhook registrations for the Account table (excludes system webhooks).
+
+    .EXAMPLE
+    Get-PSDVTableWebHook -Table "contact" -Operation "Create"
+
+    Retrieves only user-created webhooks that trigger on Contact creation.
+
+    .EXAMPLE
+    Get-PSDVTableWebHook -Table "account" -Url "https://myapp.azurewebsites.net/api/webhook"
+
+    Retrieves webhooks for the Account table that target a specific URL.
+
+    .EXAMPLE
+    Get-PSDVTableWebHook -Table "contact" -Stage "PreOperation" -Name "validation"
+
+    Retrieves webhooks for the Contact table that run in PreOperation stage and have 'validation' in their name.
+
+    .EXAMPLE
+    Get-PSDVTableWebHook -Table "account" -IncludeSystemWebHooks
+
+    Retrieves all webhook registrations for the Account table, including system-level webhooks.
+
+    .EXAMPLE
+    Get-PSDVTableWebHook -Table "spork_sporkuserrequest" | Select-Object Name, Url, Stage, Mode
+
+    Retrieves webhooks for a custom table and displays specific properties.
+    #>
+
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [String]
+        $Table,
+
+        [Parameter()]
+        [ValidateSet('Create', 'Update', 'Delete', 'Retrieve')]
+        [String]
+        $Operation,
+
+        [Parameter()]
+        [String]
+        $Url,
+
+        [Parameter()]
+        [ValidateSet('PreValidation', 'PreOperation', 'MainOperation', 'PostOperation')]
+        [String]
+        $Stage,
+
+        [Parameter()]
+        [String]
+        $Name,
+
+        [Parameter()]
+        [Switch]
+        $IncludeSystemWebHooks
+    )
+
+    if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
+        throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
+    }
+
+    try {
+        Write-Verbose "Retrieving webhook registrations for table: $Table"
+        
+        # Build the query to get SDK message processing steps with webhook service endpoints
+        $select = "sdkmessageprocessingstepid,name,description,stage,rank,mode,statuscode,supporteddeployment"
+        $expand = "eventhandler_serviceendpoint(`$select=serviceendpointid,name,url,authtype,iscustomizable),sdkmessagefilterid(`$select=sdkmessagefilterid,primaryobjecttypecode),sdkmessageid(`$select=sdkmessageid,name)"
+        
+        # Filter for webhook steps (eventhandler_serviceendpoint exists) and specific table
+        $filter = "eventhandler_serviceendpoint ne null and eventhandler_serviceendpoint/serviceendpointid ne null and sdkmessagefilterid/primaryobjecttypecode eq '$Table'"
+        
+        # Add operation filter if specified
+        if ($PSBoundParameters.ContainsKey('Operation')) {
+            $filter += " and sdkmessageid/name eq '$Operation'"
+        }
+
+        # Add URL filter if specified
+        if ($PSBoundParameters.ContainsKey('Url')) {
+            $filter += " and eventhandler_serviceendpoint/url eq '$Url'"
+        }
+
+        # Add stage filter if specified
+        if ($PSBoundParameters.ContainsKey('Stage')) {
+            $stageValue = switch ($Stage) {
+                'PreValidation' { 10 }
+                'PreOperation' { 20 }
+                'MainOperation' { 30 }
+                'PostOperation' { 40 }
+            }
+            $filter += " and stage eq $stageValue"
+        }
+
+        # Add name filter if specified (use 'contains' for partial matching)
+        if ($PSBoundParameters.ContainsKey('Name')) {
+            $filter += " and contains(name,'$Name')"
+        }
+
+        # Filter out system webhooks by default (more efficient than filtering locally)
+        if (-not $IncludeSystemWebHooks.IsPresent) {
+            $filter += " and eventhandler_serviceendpoint/iscustomizable/Value eq true"
+        }
+
+        $webhookSteps = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessageprocessingsteps" -Select $select -Expand $expand -Filter $filter
+        
+        if (-not $webhookSteps -or $webhookSteps.Count -eq 0) {
+            Write-Verbose "No webhook registrations found for table '$Table'"
+            return $null
+        }
+
+        Write-Verbose "Found $($webhookSteps.Count) webhook registration(s) for table '$Table'"
+
+        # Convert to more user-friendly objects
+        $results = foreach ($step in $webhookSteps) {
+            [PSCustomObject]@{
+                WebHookStepId = $step.sdkmessageprocessingstepid
+                Name = $step.name
+                Description = $step.description
+                Table = $step.sdkmessagefilterid.primaryobjecttypecode
+                Operation = $step.sdkmessageid.name
+                Url = $step.eventhandler_serviceendpoint.url
+                ServiceEndpointName = $step.eventhandler_serviceendpoint.name
+                ServiceEndpointId = $step.eventhandler_serviceendpoint.serviceendpointid
+                Stage = switch ($step.stage) {
+                    10 { 'PreValidation' }
+                    20 { 'PreOperation' }  
+                    30 { 'MainOperation' }
+                    40 { 'PostOperation' }
+                    default { $step.stage }
+                }
+                Rank = $step.rank
+                Mode = switch ($step.mode) {
+                    0 { 'Synchronous' }
+                    1 { 'Asynchronous' }
+                    default { $step.mode }
+                }
+                Status = switch ($step.statuscode) {
+                    1 { 'Enabled' }
+                    2 { 'Disabled' }
+                    default { $step.statuscode }
+                }
+                SupportedDeployment = switch ($step.supporteddeployment) {
+                    0 { 'ServerOnly' }
+                    1 { 'ClientOnly' }
+                    2 { 'Both' }
+                    default { $step.supporteddeployment }
+                }
+                AuthType = $step.eventhandler_serviceendpoint.authtype
+                IsSystemWebHook = $step.eventhandler_serviceendpoint.iscustomizable.Value -eq $false
+                IsCustomizable = $step.eventhandler_serviceendpoint.iscustomizable.Value -eq $true
+                #HasAuthSecret = if ($step.eventhandler_serviceendpoint.authvalue -and $step.eventhandler_serviceendpoint.authvalue.Contains('x-dv-webhook-secret')) { $true } else { $false }
+            }
+        }
+
+        # Update verbose message to reflect filtering
+        if (-not $IncludeSystemWebHooks.IsPresent) {
+            Write-Verbose "Returning $(@($results).Count) user webhook(s) (system webhooks filtered at API level)"
+        } else {
+            Write-Verbose "Returning $(@($results).Count) webhook(s) (including system webhooks)"
+        }
+
+        return $results
+    }
+    catch {
+        throw "Error retrieving webhooks for table '$Table': $($_.Exception.Message)"
+    }
+}
+
+
+function Remove-PSDVTableWebHook {
+    <#
+    .SYNOPSIS
+    Removes a webhook registration from Dataverse by deleting its service endpoint.
+
+    .DESCRIPTION
+    Remove-PSDVTableWebHook removes a webhook registration by deleting the associated service endpoint from Dataverse.
+    This will also automatically remove all associated SDK message processing steps (webhook steps) that reference
+    this service endpoint. Use this function with caution as the deletion cannot be undone.
+
+    .PARAMETER ServiceEndpointId
+    The unique identifier (GUID) of the service endpoint to delete.
+
+    .EXAMPLE
+    Remove-PSDVTableWebHook -ServiceEndpointId "12345678-1234-1234-1234-123456789012"
+
+    Removes the webhook by deleting the service endpoint with the specified ID.
+
+    .EXAMPLE
+    Get-PSDVTableWebHook -Table "account" | Where-Object Name -eq "My Account Webhook" | ForEach-Object {
+        Remove-PSDVTableWebHook -ServiceEndpointId $_.ServiceEndpointId
+    }
+
+    Finds a specific webhook by name and removes it.
+    #>
+
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)]
+        [String]
+        $ServiceEndpointId
+    )
+
+    if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
+        throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
+    }
+
+    try {
+        # Get service endpoint details for confirmation
+        Write-Verbose "Retrieving service endpoint details: $ServiceEndpointId"
+        $serviceEndpoint = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/serviceendpoints($ServiceEndpointId)" -Select "serviceendpointid,name,url"
+        
+        if (-not $serviceEndpoint) {
+            throw "Service endpoint '$ServiceEndpointId' not found"
+        }
+        
+        $endpointName = $serviceEndpoint.name
+        Write-Verbose "Found service endpoint: $ServiceEndpointId ($endpointName)"
+
+        # First, find and delete all associated SDK message processing steps
+        Write-Verbose "Finding associated webhook steps for service endpoint: $ServiceEndpointId"
+        $associatedSteps = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessageprocessingsteps" -Select "sdkmessageprocessingstepid,name" -Filter "eventhandler_serviceendpoint/serviceendpointid eq $ServiceEndpointId"
+        
+        if ($associatedSteps -and $associatedSteps.Count -gt 0) {
+            Write-Verbose "Found $($associatedSteps.Count) associated webhook step(s) to delete"
+            
+            foreach ($step in $associatedSteps) {
+                if ($PSCmdlet.ShouldProcess("Webhook Step '$($step.name)' ($($step.sdkmessageprocessingstepid))", "Delete associated webhook step")) {
+                    Write-Verbose "Deleting webhook step: $($step.sdkmessageprocessingstepid) - $($step.name)"
+                    $stepUri = $Global:DATAVERSEORGURL + "api/data/v9.2/sdkmessageprocessingsteps($($step.sdkmessageprocessingstepid))"
+                    Invoke-PSDVWebRequest -WebUri $stepUri -Method 'Delete'
+                    Write-Verbose "Successfully deleted webhook step: $($step.name)"
+                } else {
+                    Write-Verbose "Would delete webhook step: $($step.name)"
+                }
+            }
+        } else {
+            Write-Verbose "No associated webhook steps found for service endpoint: $ServiceEndpointId"
+        }
+
+        $requestHeaders = @{'Prefer' = 'odata.include-annotations="*"' }
+        $dvRequestUri = $Global:DATAVERSEORGURL + "api/data/v9.2/serviceendpoints($ServiceEndpointId)"
+
+        if ($PSCmdlet.ShouldProcess("Service Endpoint '$endpointName' ($ServiceEndpointId)", "Delete webhook")) {
+            Write-Verbose "Deleting service endpoint: $ServiceEndpointId"
+            $result = Invoke-PSDVWebRequest -WebUri $dvRequestUri -Headers $requestHeaders -Method 'Delete'
+            
+            Write-Verbose "Successfully deleted webhook service endpoint: $endpointName"
+            return [PSCustomObject]@{
+                Message = "Webhook service endpoint deleted successfully"
+                ServiceEndpointId = $ServiceEndpointId
+                Name = $endpointName
+                AssociatedStepsDeleted = if ($associatedSteps) { $associatedSteps.Count } else { 0 }
+                Deleted = $true
+            }
+        }
+    }
+    catch {
+        throw "Error removing webhook service endpoint '$ServiceEndpointId': $($_.Exception.Message)"
+    }
+}
