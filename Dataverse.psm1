@@ -545,6 +545,11 @@ function Get-PSDVTableColumn {
     Get-PSDVTableColumn -Table "account" -ColumnName @("accountid", "name") | Format-Table LogicalName, DisplayName, AttributeType
 
     Displays a formatted table of key column properties for specific columns.
+
+    .EXAMPLE
+    Get-PSDVTableColumn -Table "account" | Where-Object { $_.ChoiceValues } | Select-Object LogicalName, ChoiceValues
+
+    Returns only choice (picklist) columns with their text-to-numeric value mappings.
     #>
 
     [CmdletBinding()]
@@ -578,6 +583,42 @@ function Get-PSDVTableColumn {
         $webResponse = Invoke-PSDVWebRequest -Method Get -WebUri $baseUri
     }
 
+    # Get picklist metadata for choice columns (both local and global choices)
+    $picklistData = @{}
+    try {
+        $picklistUri = "EntityDefinitions(LogicalName='$Table')/Attributes/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+        $picklistResponse = Invoke-PSDVWebRequest -Method Get -WebUri $picklistUri -Expand "OptionSet,GlobalOptionSet"
+
+        if ($picklistResponse) {
+            foreach ($picklist in $picklistResponse) {
+                $options = [ordered]@{}
+                $optionSet = if ($picklist.GlobalOptionSet -and $picklist.GlobalOptionSet.Options) {
+                    $picklist.GlobalOptionSet
+                } elseif ($picklist.OptionSet -and $picklist.OptionSet.Options) {
+                    $picklist.OptionSet
+                } else {
+                    $null
+                }
+
+                if ($optionSet -and $optionSet.Options) {
+                    foreach ($option in $optionSet.Options) {
+                        if ($option.Label -and $option.Label.LocalizedLabels -and $option.Label.LocalizedLabels.Count -gt 0) {
+                            $label = $option.Label.LocalizedLabels[0].Label
+                            $options[$label] = $option.Value
+                        }
+                    }
+                }
+
+                if ($options.Count -gt 0) {
+                    $picklistData[$picklist.LogicalName] = $options
+                }
+            }
+        }
+    }
+    catch {
+        Write-Verbose "Unable to retrieve picklist metadata: $($_.Exception.Message)"
+    }
+
     foreach ($tableColumn in $webResponse) {
         [PSCustomObject]@{
             LogicalName = $tableColumn.LogicalName
@@ -590,6 +631,7 @@ function Get-PSDVTableColumn {
             MaxLength = $tableColumn.MaxLength
             Precision = $tableColumn.Precision
             Targets = $tableColumn.Targets -join ', '
+            ChoiceValues = if ($picklistData.ContainsKey($tableColumn.LogicalName)) { $picklistData[$tableColumn.LogicalName] } else { $null }
         }
     }
 }
