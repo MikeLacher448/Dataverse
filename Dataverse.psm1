@@ -667,6 +667,9 @@ function Get-PSDVTableItem {
     .PARAMETER ExpandQuery
     Legacy parameter name for Expand (deprecated, use Expand instead).
 
+    .PARAMETER Top
+    The maximum number of records to return. Corresponds to the OData $top query parameter.
+
     .PARAMETER SelectFields
     Legacy parameter name for Select (deprecated, use Select instead).
 
@@ -689,6 +692,11 @@ function Get-PSDVTableItem {
     Get-PSDVTableItem -EntitySet "accounts" -Filter "name contains 'Microsoft'"
 
     Retrieves accounts containing "Microsoft" in the name using entity set name.
+
+    .EXAMPLE
+    Get-PSDVTableItem -Table "account" -Top 10
+
+    Retrieves the first 10 account records.
     #>
 
     [CmdletBinding()]
@@ -732,6 +740,12 @@ function Get-PSDVTableItem {
         [parameter(ParameterSetName = 'TableEntitySetNameQuery')]
         [String[]]
         $Select,
+
+        [parameter(ParameterSetName = 'TableLogicalNameQuery')]
+        [parameter(ParameterSetName = 'TableEntitySetNameQuery')]
+        [ValidateRange(1, 5000)]
+        [Int32]
+        $Top,
 
         [parameter(Mandatory, ParameterSetName = 'TableLogicalNameQueryLegacy')]
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetNameQueryLegacy')]
@@ -818,6 +832,15 @@ function Get-PSDVTableItem {
         }
         else {
             $dvRequestUri.Query = "`$expand=$Expand"
+        }
+    }
+
+    if ($PSBoundParameters.ContainsKey('Top')) {
+        if ($dvRequestUri.Query.Length -gt 0) {
+            $dvRequestUri.Query += "&`$top=$Top"
+        }
+        else {
+            $dvRequestUri.Query = "`$top=$Top"
         }
     }
 
