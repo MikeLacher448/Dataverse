@@ -128,7 +128,7 @@ function Connect-PSDVOrg {
         Connect-AzAccount @ConnectAzAccountParams
     }
     catch {
-        throw "Error executing $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error executing $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
     try {
@@ -137,7 +137,7 @@ function Connect-PSDVOrg {
         $Global:DATAVERSEORGURL = $DataverseOrgURL
     }
     catch {
-        throw "Error executing $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error executing $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
 }
@@ -330,24 +330,19 @@ function Invoke-PSDVWebRequest {
         $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method $method -Uri $dvRequestUri.Uri.AbsoluteUri -Body $bodyContent -Headers $httpHeaders
     }
     catch {
-        if ($_.ErrorDetails) {
-            try {
-                $errorContent = (ConvertFrom-Json $_.ErrorDetails.ToString()).error
-            }
-            catch {
-                $errorContent = $_.ErrorDetails.ToString()
-            }
-        }
-        else {
-            $errorContent = $_.ToString()
-        }
-        throw "Error executing web query: $($_.Exception.Message), $errorContent"
+       $error = $_ | Out-String
+      
+       throw "Error executing web query: $error"
     }
 
     if ($ReturnRawResponse) {
         return $webResponse
     }
     else {
+        if ($null -eq $webResponse -or [string]::IsNullOrWhiteSpace($webResponse.Content)) {
+            return $null
+        }
+
         $jsonResponse = $webResponse.Content | ConvertFrom-Json
         $allResults = @()
 
@@ -417,7 +412,7 @@ function Read-PSDVTableData {
         $webResponse = Invoke-PSDVWebRequest -Method Get -WebUri ($Global:DATAVERSEORGURL + 'api/data/v9.2/EntityDefinitions?$select=DisplayName,LogicalName,EntitySetName')
     }
     catch {
-        throw "Error getting Dataverse Entity Definitions: $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error getting Dataverse Entity Definitions: $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
 
@@ -474,7 +469,7 @@ function Get-PSDVTableDetail {
         $webResponse = Invoke-PSDVWebRequest  -Method Get -WebUri ($Global:DATAVERSEORGURL + "api/data/v9.2/EntityDefinitions(LogicalName='$Table')")
     }
     catch {
-        throw "Error getting table details: $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error getting table details: $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
     $tableDetails = $webResponse
@@ -484,7 +479,7 @@ function Get-PSDVTableDetail {
         $webResponse = Invoke-PSDVWebRequest  -Method Get -WebUri ($Global:DATAVERSEORGURL + "api/data/v9.2/EntityDefinitions(LogicalName='$Table')/Attributes")
     }
     catch {
-        throw "Error getting attribute details: $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error getting attribute details: $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
     $columnDetails = $webResponse
@@ -768,7 +763,7 @@ function Get-PSDVTableItem {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
@@ -960,7 +955,7 @@ function Get-PSDVTableItemChangeHistory {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
@@ -1063,7 +1058,7 @@ function New-PSDVTableItem {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
@@ -1218,7 +1213,7 @@ function Update-PSDVTableItem {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
@@ -1348,7 +1343,7 @@ function Remove-PSDVTableItem {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
