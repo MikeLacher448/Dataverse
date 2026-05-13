@@ -128,7 +128,7 @@ function Connect-PSDVOrg {
         Connect-AzAccount @ConnectAzAccountParams
     }
     catch {
-        throw "Error executing $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error executing $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
     try {
@@ -137,7 +137,7 @@ function Connect-PSDVOrg {
         $Global:DATAVERSEORGURL = $DataverseOrgURL
     }
     catch {
-        throw "Error executing $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error executing $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
 }
@@ -330,24 +330,19 @@ function Invoke-PSDVWebRequest {
         $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method $method -Uri $dvRequestUri.Uri.AbsoluteUri -Body $bodyContent -Headers $httpHeaders
     }
     catch {
-        if ($_.ErrorDetails) {
-            try {
-                $errorContent = (ConvertFrom-Json $_.ErrorDetails.ToString()).error
-            }
-            catch {
-                $errorContent = $_.ErrorDetails.ToString()
-            }
-        }
-        else {
-            $errorContent = $_.ToString()
-        }
-        throw "Error executing web query: $($_.Exception.Message), $errorContent"
+       $error = $_ | Out-String
+      
+       throw "Error executing web query: $error"
     }
 
     if ($ReturnRawResponse) {
         return $webResponse
     }
     else {
+        if ($null -eq $webResponse -or [string]::IsNullOrWhiteSpace($webResponse.Content)) {
+            return $null
+        }
+
         $jsonResponse = $webResponse.Content | ConvertFrom-Json
         $allResults = @()
 
@@ -417,7 +412,7 @@ function Read-PSDVTableData {
         $webResponse = Invoke-PSDVWebRequest -Method Get -WebUri ($Global:DATAVERSEORGURL + 'api/data/v9.2/EntityDefinitions?$select=DisplayName,LogicalName,EntitySetName')
     }
     catch {
-        throw "Error getting Dataverse Entity Definitions: $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error getting Dataverse Entity Definitions: $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
 
@@ -474,7 +469,7 @@ function Get-PSDVTableDetail {
         $webResponse = Invoke-PSDVWebRequest  -Method Get -WebUri ($Global:DATAVERSEORGURL + "api/data/v9.2/EntityDefinitions(LogicalName='$Table')")
     }
     catch {
-        throw "Error getting table details: $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error getting table details: $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
     $tableDetails = $webResponse
@@ -484,7 +479,7 @@ function Get-PSDVTableDetail {
         $webResponse = Invoke-PSDVWebRequest  -Method Get -WebUri ($Global:DATAVERSEORGURL + "api/data/v9.2/EntityDefinitions(LogicalName='$Table')/Attributes")
     }
     catch {
-        throw "Error getting attribute details: $($_.InvocationInfo.MyCommand.Name), $($_.ToString())"
+        throw "Error getting attribute details: $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
     }
 
     $columnDetails = $webResponse
@@ -672,6 +667,9 @@ function Get-PSDVTableItem {
     .PARAMETER ExpandQuery
     Legacy parameter name for Expand (deprecated, use Expand instead).
 
+    .PARAMETER Top
+    The maximum number of records to return. Corresponds to the OData $top query parameter.
+
     .PARAMETER SelectFields
     Legacy parameter name for Select (deprecated, use Select instead).
 
@@ -694,6 +692,11 @@ function Get-PSDVTableItem {
     Get-PSDVTableItem -EntitySet "accounts" -Filter "name contains 'Microsoft'"
 
     Retrieves accounts containing "Microsoft" in the name using entity set name.
+
+    .EXAMPLE
+    Get-PSDVTableItem -Table "account" -Top 10
+
+    Retrieves the first 10 account records.
     #>
 
     [CmdletBinding()]
@@ -738,6 +741,12 @@ function Get-PSDVTableItem {
         [String[]]
         $Select,
 
+        [parameter(ParameterSetName = 'TableLogicalNameQuery')]
+        [parameter(ParameterSetName = 'TableEntitySetNameQuery')]
+        [ValidateRange(1, 5000)]
+        [Int32]
+        $Top,
+
         [parameter(Mandatory, ParameterSetName = 'TableLogicalNameQueryLegacy')]
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetNameQueryLegacy')]
         [String]
@@ -768,7 +777,7 @@ function Get-PSDVTableItem {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
@@ -823,6 +832,15 @@ function Get-PSDVTableItem {
         }
         else {
             $dvRequestUri.Query = "`$expand=$Expand"
+        }
+    }
+
+    if ($PSBoundParameters.ContainsKey('Top')) {
+        if ($dvRequestUri.Query.Length -gt 0) {
+            $dvRequestUri.Query += "&`$top=$Top"
+        }
+        else {
+            $dvRequestUri.Query = "`$top=$Top"
         }
     }
 
@@ -960,7 +978,7 @@ function Get-PSDVTableItemChangeHistory {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
@@ -1063,7 +1081,7 @@ function New-PSDVTableItem {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
@@ -1218,7 +1236,7 @@ function Update-PSDVTableItem {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
@@ -1348,7 +1366,7 @@ function Remove-PSDVTableItem {
             $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
         }
         catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_.ToString())"
+            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
         }
     }
 
@@ -1837,7 +1855,7 @@ function Get-PSDVTableWebHook {
         Write-Verbose "Retrieving webhook registrations for table: $Table"
         
         # Build the query to get SDK message processing steps with webhook service endpoints
-        $select = "sdkmessageprocessingstepid,name,description,stage,rank,mode,statuscode,supporteddeployment"
+        $select = "sdkmessageprocessingstepid,name,description,stage,rank,mode,statuscode,supporteddeployment,filteringattributes"
         $expand = "eventhandler_serviceendpoint(`$select=serviceendpointid,name,url,authtype,iscustomizable),sdkmessagefilterid(`$select=sdkmessagefilterid,primaryobjecttypecode),sdkmessageid(`$select=sdkmessageid,name)"
         
         # Filter for webhook steps (eventhandler_serviceendpoint exists) and specific table
@@ -1891,6 +1909,7 @@ function Get-PSDVTableWebHook {
                 Description = $step.description
                 Table = $step.sdkmessagefilterid.primaryobjecttypecode
                 Operation = $step.sdkmessageid.name
+                ColumnFilter = if ($step.filteringattributes) { $step.filteringattributes.Split(',') } else { $null }
                 Url = $step.eventhandler_serviceendpoint.url
                 ServiceEndpointName = $step.eventhandler_serviceendpoint.name
                 ServiceEndpointId = $step.eventhandler_serviceendpoint.serviceendpointid
