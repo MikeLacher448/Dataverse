@@ -1855,7 +1855,7 @@ function Get-PSDVTableWebHook {
         Write-Verbose "Retrieving webhook registrations for table: $Table"
         
         # Build the query to get SDK message processing steps with webhook service endpoints
-        $select = "sdkmessageprocessingstepid,name,description,stage,rank,mode,statuscode,supporteddeployment"
+        $select = "sdkmessageprocessingstepid,name,description,stage,rank,mode,statuscode,supporteddeployment,filteringattributes"
         $expand = "eventhandler_serviceendpoint(`$select=serviceendpointid,name,url,authtype,iscustomizable),sdkmessagefilterid(`$select=sdkmessagefilterid,primaryobjecttypecode),sdkmessageid(`$select=sdkmessageid,name)"
         
         # Filter for webhook steps (eventhandler_serviceendpoint exists) and specific table
@@ -1909,6 +1909,7 @@ function Get-PSDVTableWebHook {
                 Description = $step.description
                 Table = $step.sdkmessagefilterid.primaryobjecttypecode
                 Operation = $step.sdkmessageid.name
+                ColumnFilter = if ($step.filteringattributes) { $step.filteringattributes.Split(',') } else { $null }
                 Url = $step.eventhandler_serviceendpoint.url
                 ServiceEndpointName = $step.eventhandler_serviceendpoint.name
                 ServiceEndpointId = $step.eventhandler_serviceendpoint.serviceendpointid
