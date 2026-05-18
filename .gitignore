@@ -1,6 +1,7 @@
 # PowerShell artifacts
 *.pdb
 *.dll
+!lib/**/*.dll
 *.exe
 *.cache
 

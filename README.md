@@ -15,22 +15,38 @@ A comprehensive PowerShell module for interacting with Microsoft Dataverse envir
 ## Prerequisites
 
 - PowerShell 7.3 or later
-- Az.Accounts module 3.0.0 or later
 - Appropriate permissions to access your Dataverse environment
+
+The module bundles a pinned Azure.Identity SDK dependency set under `lib/netstandard2.0`, so client machines do not need Az.Accounts or NuGet package installation for authentication. Managed identity authentication can optionally use the Azure Functions/App Service runtime endpoint directly to avoid loading Azure.Identity in hosts that already load conflicting MSAL or identity assemblies.
 
 ## Installation
 
-### Manual Installation
+### Install from a PowerShell repository
 
-1. Download or clone this repository
-2. Copy the `Dataverse` folder to one of your PowerShell module paths:
-   - User modules: `$env:USERPROFILE\Documents\PowerShell\Modules\`
-   - System modules: `$env:PROGRAMFILES\PowerShell\Modules\`
+```powershell
+Install-Module -Name Dataverse -Scope CurrentUser
+```
 
-3. Import the module:
-   ```powershell
-   Import-Module Dataverse
-   ```
+To download the module without installing it into a module path, use `Save-Module`:
+
+```powershell
+Save-Module -Name Dataverse -Path .\Modules
+$env:PSModulePath = ".\Modules$([IO.Path]::PathSeparator)$env:PSModulePath"
+Import-Module Dataverse
+```
+
+If you publish the module to a private repository, pass the repository name to either cmdlet:
+
+```powershell
+Install-Module -Name Dataverse -Repository "YourRepository" -Scope CurrentUser
+Save-Module -Name Dataverse -Repository "YourRepository" -Path .\Modules
+```
+
+### Import the module
+
+```powershell
+Import-Module Dataverse
+```
 
 ### Verify Installation
 
@@ -44,22 +60,60 @@ Get-Command -Module Dataverse
 ### 1. Connect to Dataverse
 
 #### Interactive Authentication
+
 ```powershell
 Connect-PSDVOrg -AzureTenantId "your-tenant-id" `
-                -SubscriptionId "your-subscription-id" `
-                -DataverseOrgURL "https://yourorg.crm.dynamics.com/" `
-                -Environment "AzureCloud"
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
 ```
 
+Interactive authentication uses browser-based Azure.Identity authentication by default, which supports MFA and Conditional Access. Use `-UseDeviceCode` only when browser authentication is not available.
+
 #### Service Principal Authentication
+
 ```powershell
 $secret = ConvertTo-SecureString "your-client-secret" -AsPlainText -Force
 Connect-PSDVOrg -ClientID "your-client-id" `
                 -ClientSecret $secret `
                 -AzureTenantId "your-tenant-id" `
-                -DataverseOrgURL "https://yourorg.crm.dynamics.com/" `
-                -Environment "AzureCloud"
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
 ```
+
+#### Service Principal Certificate Authentication
+
+```powershell
+Connect-PSDVOrg -ClientID "your-client-id" `
+                -CertificateThumbprint "certificate-thumbprint" `
+                -AzureTenantId "your-tenant-id" `
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
+
+$certPassword = ConvertTo-SecureString "pfx-password" -AsPlainText -Force
+Connect-PSDVOrg -ClientID "your-client-id" `
+                -CertificatePath "C:\certs\app-auth.pfx" `
+                -CertificatePassword $certPassword `
+                -AzureTenantId "your-tenant-id" `
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
+```
+
+For sovereign clouds, add `-Environment AzureUSGovernment`, `-Environment AzureChinaCloud`, or `-Environment AzureGermanCloud` to interactive, client secret, or certificate authentication.
+
+#### Managed Identity Authentication
+
+```powershell
+# System-assigned managed identity
+Connect-PSDVOrg -UseSystemManagedIdentity `
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
+
+# User-assigned managed identity
+Connect-PSDVOrg -ManagedIdentityID "your-managed-identity-client-id" `
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
+
+# Azure Functions/App Service runtime endpoint without loading Azure.Identity
+Connect-PSDVOrg -UseSystemManagedIdentity `
+                -ManagedIdentityTokenSource FunctionRuntime `
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
+```
+
+Managed identity uses Azure.Identity by default for broad Azure host compatibility. Use `-ManagedIdentityTokenSource FunctionRuntime` only in Azure Functions or App Service environments where the managed identity runtime endpoint is available through `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`.
 
 ### 2. Basic Operations
 
