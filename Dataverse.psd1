@@ -51,9 +51,7 @@ PowerShellVersion = '7.3'
 # ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-RequiredModules = @(
-    @{ModuleName = 'Az.Accounts'; ModuleVersion = '3.0.0'}
-)
+RequiredModules = @()
 
 # Assemblies that must be loaded prior to importing this module
 # RequiredAssemblies = @()
@@ -142,7 +140,8 @@ Key Features:
 - PowerShell 7.3+ compatibility with Constrained Language Mode support
 - PSScriptAnalyzer compliant code following best practices
 - Comprehensive help documentation with examples
-- Module installation and testing utilities
+- Native PowerShellGet installation with bundled authentication dependencies
+- Optional FunctionRuntime managed identity token acquisition to avoid loading Azure.Identity in Azure Functions/App Service hosts
 
 For detailed documentation, visit: https://github.com/microsoft/Dataverse
 '@

@@ -47,6 +47,24 @@ else {
     Write-Host "   ✗ Missing functions: $($missingFunctions -join ', ')" -ForegroundColor Red
 }
 
+$connectCommand = Get-Command Connect-PSDVOrg
+if ($connectCommand.Parameters.ContainsKey('ManagedIdentityTokenSource')) {
+    Write-Host "   ✓ ManagedIdentityTokenSource parameter is available" -ForegroundColor Green
+
+    $validateSet = $connectCommand.Parameters['ManagedIdentityTokenSource'].Attributes | Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] }
+    $expectedTokenSources = @('AzureIdentity', 'FunctionRuntime')
+    $missingTokenSources = $expectedTokenSources | Where-Object { $_ -notin $validateSet.ValidValues }
+    if ($missingTokenSources.Count -eq 0) {
+        Write-Host "   ✓ ManagedIdentityTokenSource validates AzureIdentity and FunctionRuntime" -ForegroundColor Green
+    }
+    else {
+        Write-Host "   ✗ ManagedIdentityTokenSource missing values: $($missingTokenSources -join ', ')" -ForegroundColor Red
+    }
+}
+else {
+    Write-Host "   ✗ ManagedIdentityTokenSource parameter is missing" -ForegroundColor Red
+}
+
 # Test 3: Check Help Documentation
 Write-Host "`n3. Testing Help Documentation..." -ForegroundColor Yellow
 $functionsWithoutHelp = @()
@@ -90,9 +108,34 @@ catch {
     }
 }
 
-# Test 6: Show Module Summary
-Write-Host "`n6. Module Summary..." -ForegroundColor Yellow
-$moduleInfo = Get-Module PSDataverse
+# Test 6: Check Bundled Azure.Identity SDK
+Write-Host "`n6. Testing Bundled Azure.Identity SDK..." -ForegroundColor Yellow
+$moduleInfo = Get-Module Dataverse
+$azureIdentityDll = Join-Path $moduleInfo.ModuleBase 'lib\netstandard2.0\Azure.Identity.dll'
+if (Test-Path -Path $azureIdentityDll -PathType Leaf) {
+    Write-Host "   ✓ Bundled Azure.Identity SDK found" -ForegroundColor Green
+
+    try {
+        & $moduleInfo { Import-PSDVAzureIdentityAssemblies }
+        $azureIdentityType = 'Azure.Identity.InteractiveBrowserCredential' -as [type]
+        if ($null -ne $azureIdentityType) {
+            Write-Host "   ✓ Azure.Identity SDK loads successfully" -ForegroundColor Green
+        }
+        else {
+            Write-Host "   ✗ Azure.Identity SDK did not register expected types" -ForegroundColor Red
+        }
+    }
+    catch {
+        Write-Host "   ✗ Azure.Identity SDK failed to load: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+else {
+    Write-Host "   ✗ Bundled Azure.Identity SDK missing: $azureIdentityDll" -ForegroundColor Red
+}
+
+# Test 7: Show Module Summary
+Write-Host "`n7. Module Summary..." -ForegroundColor Yellow
+$moduleInfo = Get-Module Dataverse
 Write-Host "   Module Name: $($moduleInfo.Name)" -ForegroundColor Cyan
 Write-Host "   Version: $($moduleInfo.Version)" -ForegroundColor Cyan
 Write-Host "   Author: $($moduleInfo.Author)" -ForegroundColor Cyan
@@ -103,9 +146,7 @@ Write-Host "   Required Modules: $($moduleInfo.RequiredModules.Name -join ', ')"
 Write-Host "`n==============================" -ForegroundColor Green
 Write-Host "Module testing completed!" -ForegroundColor Green
 Write-Host "`nNext steps:" -ForegroundColor Yellow
-Write-Host "1. Install Az.Accounts module if not already installed:" -ForegroundColor White
-Write-Host "   Install-Module Az.Accounts -MinimumVersion 3.0.0" -ForegroundColor Gray
-Write-Host "2. Use Connect-PSDVOrg to establish a connection" -ForegroundColor White
-Write-Host "3. Start using the module functions" -ForegroundColor White
+Write-Host "1. Use Connect-PSDVOrg to establish a connection" -ForegroundColor White
+Write-Host "2. Start using the module functions" -ForegroundColor White
 Write-Host "`nFor detailed help on any function, use:" -ForegroundColor Yellow
 Write-Host "   Get-Help <FunctionName> -Full" -ForegroundColor Gray
