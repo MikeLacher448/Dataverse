@@ -40,7 +40,7 @@ function Get-PSDVTableItemChangeHistory {
         $EntitySet,
 
         [parameter(Mandatory)]
-        [String]
+        [Guid]
         $ItemID
     )
 
@@ -48,19 +48,20 @@ function Get-PSDVTableItemChangeHistory {
         throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
     }
 
+    if ($ItemID -eq [Guid]::Empty) {
+        throw 'ItemID cannot be an empty GUID'
+    }
+
     if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
-        try {
-            $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
-        }
-        catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
-        }
+        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
     }
 
 
     $requestHeaders = @{'Prefer' = 'odata.include-annotations="*"' }
 
-    $dvRequestUri = $Global:DATAVERSEORGURL + "api/data/v9.2/RetrieveRecordChangeHistory(Target=@target)?@target={'@odata.id':'$EntitySet($ItemID)'}"
+    $targetJson = @{ '@odata.id' = "$EntitySet($ItemID)" } | ConvertTo-Json -Compress
+    $targetQuery = Join-PSDVQueryString -QueryParameters ([ordered]@{ '@target' = $targetJson })
+    $dvRequestUri = "RetrieveRecordChangeHistory(Target=@target)?$targetQuery"
 
     $webResponse = Invoke-PSDVWebRequest -WebUri  $dvRequestUri -Headers $requestHeaders -Method 'Get'
 

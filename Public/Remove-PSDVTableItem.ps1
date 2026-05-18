@@ -47,7 +47,7 @@ function Remove-PSDVTableItem {
         $EntitySet,
 
         [parameter(Mandatory)]
-        [String]
+        [Guid]
         $ItemID
     )
 
@@ -55,14 +55,13 @@ function Remove-PSDVTableItem {
         throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
     }
 
+    if ($ItemID -eq [Guid]::Empty) {
+        throw 'ItemID cannot be an empty GUID'
+    }
+
 
     if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
-        try {
-            $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
-        }
-        catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
-        }
+        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
     }
 
 
@@ -70,7 +69,7 @@ function Remove-PSDVTableItem {
 
 
     #build the dv web query
-    $dvRequestUri = $Global:DATAVERSEORGURL + "api/data/v9.2/$EntitySet($ItemID)"
+    $dvRequestUri = "$EntitySet($ItemID)"
 
     if ($PSCmdlet.ShouldProcess("$EntitySet($ItemID)", "Delete item")) {
         return (Invoke-PSDVWebRequest -WebUri  $dvRequestUri -Headers $requestHeaders -Method 'Delete' )

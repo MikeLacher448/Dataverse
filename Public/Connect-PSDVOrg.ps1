@@ -156,6 +156,10 @@ function Connect-PSDVOrg {
         $DataverseOrgURL = $DataverseOrgURL + '/'
     }
 
+    if ($PSBoundParameters.ContainsKey('SubscriptionId')) {
+        Write-Warning 'The -SubscriptionId parameter is deprecated and no longer used. It is planned for removal in the next major version.'
+    }
+
     $authContext = @{
         ParameterSetName  = $PSCmdlet.ParameterSetName
         ResourceUrl       = $DataverseOrgURL
@@ -176,12 +180,8 @@ function Connect-PSDVOrg {
     try {
         Write-Verbose "Getting Dataverse Access Token for $DataverseOrgUrl"
         $accessToken = Get-PSDVAccessToken -AuthContext $authContext
-        if ($accessToken.PSObject.Properties.Name -contains 'RefreshToken') {
-            $authContext.RefreshToken = $accessToken.RefreshToken
-        }
-
+        Set-PSDVAccessToken -AccessToken $accessToken -AuthContext $authContext -Operation 'Initial token acquisition'
         $Global:DATAVERSEAUTHCONTEXT = $authContext
-        $Global:DATAVERSEACCESSTOKEN = $accessToken
         $Global:DATAVERSEORGURL = $DataverseOrgURL
     }
     catch {

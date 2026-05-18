@@ -24,6 +24,9 @@ function Invoke-PSDVWebRequest {
     .PARAMETER Expand
     OData $expand parameter to include related records.
 
+    .PARAMETER Top
+    OData $top parameter to limit the number of returned records.
+
     .PARAMETER Body
     Hashtable containing the request body data for POST/PATCH operations.
 
@@ -74,6 +77,11 @@ function Invoke-PSDVWebRequest {
         $Expand,
 
         [parameter()]
+        [ValidateRange(1, 5000)]
+        [Int32]
+        $Top,
+
+        [parameter()]
         [hashtable]
         $Body,
 
@@ -86,11 +94,7 @@ function Invoke-PSDVWebRequest {
         $ReturnRawResponse = $false
     )
 
-    if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
-        throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
-    }
-
-    Update-PSDVAccessToken
+    Set-PSDVAccessToken
 
     # Remove leading slash if present
     if ($WebUri.StartsWith('/')) {
@@ -109,17 +113,18 @@ function Invoke-PSDVWebRequest {
     $dvRequestUri = [System.UriBuilder]$dvRequestUri
 
     # Append query parameters if provided
-    $queryParams = @{}
+    $queryParams = [ordered]@{}
     if ($Select) { $queryParams['$select'] = $Select }
     if ($Filter) { $queryParams['$filter'] = $Filter }
     if ($Expand) { $queryParams['$expand'] = $Expand }
+    if ($PSBoundParameters.ContainsKey('Top')) { $queryParams['$top'] = $Top }
 
     if ($queryParams.Count -gt 0) {
         $existingQuery = $dvRequestUri.Query
         if ($existingQuery.StartsWith('?')) {
             $existingQuery = $existingQuery.Substring(1)
         }
-        $newQuery = ($queryParams.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '&'
+        $newQuery = Join-PSDVQueryString -QueryParameters $queryParams
         if ($existingQuery) {
             $dvRequestUri.Query = "$existingQuery&$newQuery"
         }
@@ -168,7 +173,13 @@ function Invoke-PSDVWebRequest {
             return $null
         }
 
-        $jsonResponse = $webResponse.Content | ConvertFrom-Json
+        try {
+            $jsonResponse = $webResponse.Content | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "Failed to parse Dataverse JSON response. Error: $($_.Exception.Message)"
+        }
+
         $allResults = @()
 
         # Handle paging by following @odata.nextLink
@@ -190,11 +201,10 @@ function Invoke-PSDVWebRequest {
                 try {
                     Write-Verbose "Following pagination link: $($jsonResponse.'@odata.nextLink')"
                     $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method Get -Uri $jsonResponse.'@odata.nextLink' -Headers $httpHeaders
-                    $jsonResponse = $webResponse.Content | ConvertFrom-Json
+                    $jsonResponse = $webResponse.Content | ConvertFrom-Json -ErrorAction Stop
                 }
                 catch {
-                    Write-Warning "Error retrieving next page: $($_.Exception.Message)"
-                    break
+                    throw "Pagination failed after retrieving $($allResults.Count) record(s). Error retrieving next page: $($_.Exception.Message)"
                 }
             }
             else {

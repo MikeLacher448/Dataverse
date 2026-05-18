@@ -19,6 +19,8 @@ A comprehensive PowerShell module for interacting with Microsoft Dataverse envir
 
 The module bundles a pinned Azure.Identity SDK dependency set under `lib/netstandard2.0`, so client machines do not need Az.Accounts or NuGet package installation for authentication. Managed identity authentication can optionally use the Azure Functions/App Service runtime endpoint directly to avoid loading Azure.Identity in hosts that already load conflicting MSAL or identity assemblies.
 
+The `lib/netstandard2.0` DLLs are intentionally committed with the module so authentication works on machines that cannot install NuGet packages at runtime. Update those DLLs as a single dependency set to avoid mixed Azure.Identity/MSAL versions.
+
 ## Installation
 
 ### Install from a PowerShell repository
@@ -113,11 +115,20 @@ Connect-PSDVOrg -UseSystemManagedIdentity `
                 -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
 ```
 
-Managed identity uses Azure.Identity by default for broad Azure host compatibility. Use `-ManagedIdentityTokenSource FunctionRuntime` only in Azure Functions or App Service environments where the managed identity runtime endpoint is available through `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`.
+Managed identity uses Azure.Identity by default for broad Azure host compatibility. Use `-ManagedIdentityTokenSource FunctionRuntime` only in Azure Functions or App Service environments where the managed identity runtime endpoint is available through `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`, or legacy App Service environments that expose `MSI_ENDPOINT` and `MSI_SECRET`. Azure VMs and other hosts should use the default AzureIdentity token source.
+
+`-SubscriptionId` is a deprecated compatibility parameter for older examples. It is no longer used and is planned for removal in the next major version.
+
+Disconnect when you are finished to clear the session-scoped connection state:
+
+```powershell
+Disconnect-PSDVOrg
+```
 
 ### 2. Basic Operations
 
 #### Retrieve Records
+
 ```powershell
 # Get all accounts
 Get-PSDVTableItem -Table "account"
@@ -133,6 +144,7 @@ Get-PSDVTableItem -Table "account" -Select @("name", "telephone1", "websiteurl")
 ```
 
 #### Create Records
+
 ```powershell
 $accountData = @{
     name = "Contoso Corporation"
@@ -143,6 +155,7 @@ New-PSDVTableItem -Table "account" -ItemData $accountData
 ```
 
 #### Update Records
+
 ```powershell
 $updateData = @{
     name = "Updated Company Name"
@@ -152,6 +165,7 @@ Update-PSDVTableItem -Table "account" -ItemID "record-guid" -ItemData $updateDat
 ```
 
 #### Delete Records
+
 ```powershell
 Remove-PSDVTableItem -Table "account" -ItemID "record-guid"
 ```
@@ -159,6 +173,7 @@ Remove-PSDVTableItem -Table "account" -ItemID "record-guid"
 ### 3. Metadata Operations
 
 #### Get Table Information
+
 ```powershell
 # Get all tables
 Read-PSDVTableData
@@ -176,10 +191,14 @@ Get-PSDVTableColumn -Table "account" -ColumnName @("name", "telephone1")
 ## Function Reference
 
 ### Connection Functions
+
 - `Connect-PSDVOrg` - Establish connection to Dataverse
-- `Update-PSDVAccessToken` - Refresh access token
+- `Disconnect-PSDVOrg` - Clear the current Dataverse connection state
+
+Access tokens are refreshed automatically by Dataverse operations when they are close to expiration.
 
 ### Core Operations
+
 - `Invoke-PSDVWebRequest` - Execute authenticated web requests
 - `Get-PSDVTableItem` - Retrieve records from tables
 - `New-PSDVTableItem` - Create new records
@@ -187,17 +206,20 @@ Get-PSDVTableColumn -Table "account" -ColumnName @("name", "telephone1")
 - `Remove-PSDVTableItem` - Delete records
 
 ### Metadata Functions
+
 - `Read-PSDVTableData` - Get all table metadata
 - `Get-PSDVTableDetail` - Get detailed table information
 - `Get-PSDVTableColumn` - Get column metadata
 
 ### Audit Functions
+
 - `Get-PSDVTableItemAuditHistory` - Get audit history
 - `Get-PSDVTableItemChangeHistory` - Get detailed change history
 
 ## Advanced Examples
 
 ### Complex Filtering and Expansion
+
 ```powershell
 # Get accounts with revenue over $1M and include primary contact
 Get-PSDVTableItem -Table "account" `
@@ -207,6 +229,7 @@ Get-PSDVTableItem -Table "account" `
 ```
 
 ### Working with Lookup Fields
+
 ```powershell
 # Create contact with parent account lookup
 $contactData = @{
@@ -219,6 +242,7 @@ New-PSDVTableItem -Table "contact" -ItemData $contactData -ParseItemData
 ```
 
 ### Audit Trail Analysis
+
 ```powershell
 # Get complete audit history for a record
 Get-PSDVTableItemAuditHistory -Table "account" -ItemID "record-guid"
@@ -257,6 +281,7 @@ catch {
 4. **Token Expiration**: The module automatically handles token refresh
 
 ### Verbose Logging
+
 ```powershell
 # Enable verbose output for troubleshooting
 Get-PSDVTableItem -Table "account" -Verbose
@@ -281,7 +306,17 @@ This module follows PowerShell best practices and PSScriptAnalyzer rules. When c
 
 ## Changelog
 
+### Version 1.1.0
+
+- Removed the direct Az.Accounts dependency and use bundled Azure.Identity authentication dependencies.
+- Added browser-based interactive authentication support for MFA and Conditional Access scenarios.
+- Added optional FunctionRuntime managed identity token acquisition for Azure Functions/App Service hosts.
+- Added `Disconnect-PSDVOrg` to clear session connection state.
+- Hardened OData query encoding, pagination failure handling, token validation, GUID validation, and webhook secret escaping.
+- Deprecated legacy `-SubscriptionId`, `-FilterQuery`, `-ExpandQuery`, and `-SelectFields` parameters.
+
 ### Version 1.0.0
+
 - Initial release
 - Support for all major Dataverse operations
 - Multiple authentication methods

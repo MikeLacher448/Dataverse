@@ -31,14 +31,10 @@ function Get-PSDVTableDetail {
         $Table
     )
 
-    if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
-        throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
-    }
-
-
     #Get table details
+    $tableLiteral = ConvertTo-PSDVODataStringLiteral -Value $Table
     try {
-        $webResponse = Invoke-PSDVWebRequest  -Method Get -WebUri ($Global:DATAVERSEORGURL + "api/data/v9.2/EntityDefinitions(LogicalName='$Table')")
+        $webResponse = Invoke-PSDVWebRequest  -Method Get -WebUri "EntityDefinitions(LogicalName=$tableLiteral)"
     }
     catch {
         throw "Error getting table details: $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"
@@ -48,7 +44,7 @@ function Get-PSDVTableDetail {
 
     #get fields / column details
     try {
-        $webResponse = Invoke-PSDVWebRequest  -Method Get -WebUri ($Global:DATAVERSEORGURL + "api/data/v9.2/EntityDefinitions(LogicalName='$Table')/Attributes")
+        $webResponse = Invoke-PSDVWebRequest  -Method Get -WebUri "EntityDefinitions(LogicalName=$tableLiteral)/Attributes"
     }
     catch {
         throw "Error getting attribute details: $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"

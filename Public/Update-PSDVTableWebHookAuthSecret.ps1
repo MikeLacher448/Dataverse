@@ -57,7 +57,7 @@ function Update-PSDVTableWebHookAuthSecret {
         $WebHookName,
 
         [Parameter(Mandatory, ParameterSetName = 'ByStepId')]
-        [String]
+        [Guid]
         $WebHookStepId,
 
         [Parameter(ParameterSetName = 'ByName')]
@@ -68,6 +68,10 @@ function Update-PSDVTableWebHookAuthSecret {
 
     if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
         throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
+    }
+
+    if ($PSBoundParameters.ContainsKey('WebHookStepId') -and $WebHookStepId -eq [Guid]::Empty) {
+        throw 'WebHookStepId cannot be an empty GUID'
     }
 
     try {
@@ -134,7 +138,8 @@ function Update-PSDVTableWebHookAuthSecret {
 
         # Prepare the auth value based on whether a secret is provided
         if ($PSBoundParameters.ContainsKey('AuthSecret') -and -not [string]::IsNullOrEmpty($AuthSecret)) {
-            $authValue = "<settings><setting name=""x-dv-webhook-secret"" value=""$AuthSecret""/></settings>"
+            $escapedAuthSecret = ConvertTo-PSDVXmlAttributeValue -Value $AuthSecret
+            $authValue = "<settings><setting name=""x-dv-webhook-secret"" value=""$escapedAuthSecret""/></settings>"
             $actionDescription = "Update authentication secret"
         } else {
             $authValue = "<settings></settings>"

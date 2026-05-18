@@ -77,12 +77,7 @@ function New-PSDVTableItem {
     # ex, "cr33a_MACOM@odata.bind" = "/cr33a_macoms(b7322079-55d2-ee11-9078-000d3a33b5cf)"
 
     if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
-        try {
-            $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
-        }
-        catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
-        }
+        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
     }
 
 
@@ -94,52 +89,19 @@ function New-PSDVTableItem {
         $requestHeaders['Prefer'] = 'odata.include-annotations="*",return=representation'
     }
 
-    #verify fields in ItemData are valid for the table
-    if ($PSCmdlet.ParameterSetName.StartsWith('TableEntitySetName'))
-    {
-        $Table = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions?`$filter=EntitySetName eq '$EntitySet'&`$select=LogicalName").LogicalName
-    }
-    $tableColumns = Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')/Attributes"
-    $attributeDetails = @{}
-    $invalidAttributes = @()
-
-    foreach ($attribute in $ItemData.GetEnumerator().name ) {
-        if (! $tableColumns.LogicalName -contains $attribute) {
-            $invalidAttributes += $attribute
-        }else {
-            $attributeDetails.Add($attribute, ($tableColumns | Where-Object { $_.LogicalName -eq $attribute } | Select-Object -Property AttributeType,SchemaName,Targets))
-        }
-    }
-    if ($invalidAttributes.Count -gt 0) {
-        throw "Invalid attributes not present in $Table : $($invalidAttributes -join ', ')"
-    }
-    
-
+    $itemDataValidation = Confirm-PSDVItemDataAttributes -Table $Table -EntitySet $EntitySet -ItemData $ItemData
+    $Table = $itemDataValidation.Table
+    $attributeDetails = $itemDataValidation.AttributeDetails
 
     if ($ParseItemData.IsPresent) {
-        $ParsedItemData = @{}
-
-        foreach ($attribute in $attributeDetails.GetEnumerator().name ) {
-           if ($attributeDetails[$attribute].AttributeType -eq 'Lookup') {
-                $navProperty = $attributeDetails[$attribute].SchemaName
-                $targetTable = $attributeDetails[$attribute].Targets[0]
-                $targetTableSet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$targetTable')" -Select 'EntitySetName').EntitySetName
-                $targetItemID = $ItemData[$attribute]
-                $ParsedItemData.Add("$navProperty@odata.bind", "/$targetTableSet($targetItemID)")
-            }
-            else {
-                $ParsedItemData.Add($attribute, $ItemData[$attribute])
-            }
-        }
-
-        $ItemData2Process = $ParsedItemData
+        $ItemData2Process = ConvertTo-PSDVLookupItemData -ItemData $ItemData -AttributeDetails $attributeDetails
     }
     else {
         $ItemData2Process = $ItemData
     }
 
 
-    $dvRequestUri = $Global:DATAVERSEORGURL + "api/data/v9.2/$EntitySet"
+    $dvRequestUri = $EntitySet
 
     if ($PSCmdlet.ShouldProcess($EntitySet, "Create new item")) {
         return (Invoke-PSDVWebRequest -WebUri  $dvRequestUri -Headers $requestHeaders -Body $ItemData2Process)

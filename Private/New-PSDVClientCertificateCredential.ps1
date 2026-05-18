@@ -9,10 +9,20 @@ function New-PSDVClientCertificateCredential {
     $certificate = $AuthContext.Certificate
     if ($null -eq $certificate) {
         if (-not [string]::IsNullOrWhiteSpace($AuthContext.CertificateThumbprint)) {
-            $certificate = Get-PSDVCertificateByThumbprint -CertificateThumbprint $AuthContext.CertificateThumbprint
+            $normalizedThumbprint = $AuthContext.CertificateThumbprint.Replace(' ', '').ToUpperInvariant()
+            $certificate = Get-ChildItem -Path Cert:\CurrentUser\My, Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
+                Where-Object { $_.Thumbprint -eq $normalizedThumbprint } |
+                Select-Object -First 1
+
+            if ($null -eq $certificate) {
+                throw "Certificate with thumbprint '$($AuthContext.CertificateThumbprint)' was not found in CurrentUser or LocalMachine personal certificate stores"
+            }
         }
         elseif (-not [string]::IsNullOrWhiteSpace($AuthContext.CertificatePath)) {
-            $certificate = Get-PSDVCertificateFromPath -CertificatePath $AuthContext.CertificatePath -CertificatePassword $AuthContext.CertificatePassword
+            $resolvedCertificatePath = (Resolve-Path -Path $AuthContext.CertificatePath -ErrorAction Stop).Path
+            $keyStorageFlags = [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable -bor [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet
+            $plainTextPassword = if ($null -ne $AuthContext.CertificatePassword) { ConvertFrom-PSDVSecureString -SecureString $AuthContext.CertificatePassword } else { '' }
+            $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($resolvedCertificatePath, $plainTextPassword, $keyStorageFlags)
         }
     }
 
