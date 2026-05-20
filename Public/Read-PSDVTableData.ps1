@@ -21,12 +21,8 @@ function Read-PSDVTableData {
 
 #legacy function
 
-    if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
-        throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
-    }
-
     try {
-        $webResponse = Invoke-PSDVWebRequest -Method Get -WebUri ($Global:DATAVERSEORGURL + 'api/data/v9.2/EntityDefinitions?$select=DisplayName,LogicalName,EntitySetName')
+        $webResponse = Invoke-PSDVWebRequest -Method Get -WebUri 'EntityDefinitions' -Select 'DisplayName,LogicalName,EntitySetName'
     }
     catch {
         throw "Error getting Dataverse Entity Definitions: $($_.InvocationInfo.MyCommand.Name), $($_ | Out-String)"

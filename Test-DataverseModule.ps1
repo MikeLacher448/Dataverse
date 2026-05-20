@@ -108,6 +108,42 @@ catch {
     }
 }
 
+$tableParameterBindingCases = @(
+    @{ Name = 'Get-PSDVTableColumn -Table'; Command = { Get-PSDVTableColumn -Table 'account' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableDetail -Table'; Command = { Get-PSDVTableDetail -Table 'account' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableItem -Table'; Command = { Get-PSDVTableItem -Table 'account' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableItem -EntitySet'; Command = { Get-PSDVTableItem -EntitySet 'accounts' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableItem -Table -ItemID'; Command = { Get-PSDVTableItem -Table 'account' -ItemID '00000000-0000-0000-0000-000000000001' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableItem -EntitySet -ItemID'; Command = { Get-PSDVTableItem -EntitySet 'accounts' -ItemID '00000000-0000-0000-0000-000000000001' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableItem legacy item lookup aliases'; Command = { Get-PSDVTableItem -Table 'account' -ItemID '00000000-0000-0000-0000-000000000001' -SelectFields 'name' -ExpandQuery 'primarycontactid' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableItem legacy query aliases'; Command = { Get-PSDVTableItem -Table 'account' -FilterQuery "name eq 'Contoso'" -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableItemAuditHistory -Table -ItemID'; Command = { Get-PSDVTableItemAuditHistory -Table 'account' -ItemID '00000000-0000-0000-0000-000000000001' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableItemChangeHistory -Table -ItemID'; Command = { Get-PSDVTableItemChangeHistory -Table 'account' -ItemID '00000000-0000-0000-0000-000000000001' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableItemChangeHistory -EntitySet -ItemID'; Command = { Get-PSDVTableItemChangeHistory -EntitySet 'accounts' -ItemID '00000000-0000-0000-0000-000000000001' -ErrorAction Stop } },
+    @{ Name = 'Get-PSDVTableWebHook -Table'; Command = { Get-PSDVTableWebHook -Table 'account' -ErrorAction Stop } }
+)
+
+$parameterBindingFailures = @()
+foreach ($case in $tableParameterBindingCases) {
+    try {
+        & $case.Command
+        $parameterBindingFailures += $case.Name
+    }
+    catch {
+        if ($_.Exception.Message -notlike '*No existing connection*') {
+            $parameterBindingFailures += "$($case.Name): $($_.Exception.Message)"
+        }
+    }
+}
+
+if ($parameterBindingFailures.Count -eq 0) {
+    Write-Host "   ✓ Get-PSDVTable* minimum parameter combinations bind without ambiguity" -ForegroundColor Green
+}
+else {
+    Write-Host "   ✗ Get-PSDVTable* parameter binding failures:" -ForegroundColor Red
+    $parameterBindingFailures | ForEach-Object { Write-Host "     - $_" -ForegroundColor Red }
+}
+
 # Test 6: Check Bundled Azure.Identity SDK
 Write-Host "`n6. Testing Bundled Azure.Identity SDK..." -ForegroundColor Yellow
 $moduleInfo = Get-Module Dataverse

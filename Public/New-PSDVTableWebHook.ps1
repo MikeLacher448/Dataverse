@@ -198,7 +198,10 @@ function New-PSDVTableWebHook {
     # Check for existing webhook with same table, operation, and URL
     Write-Verbose "Checking for existing webhook with same table ($Table), operation ($Operation), and URL ($TriggerUri)"
     try {
-        $existingWebhookQuery = "eventhandler_serviceendpoint ne null and eventhandler_serviceendpoint/serviceendpointid ne null and sdkmessagefilterid/primaryobjecttypecode eq '$Table' and sdkmessageid/name eq '$Operation' and eventhandler_serviceendpoint/url eq '$TriggerUri'"
+        $tableLiteral = ConvertTo-PSDVODataStringLiteral -Value $Table
+        $operationLiteral = ConvertTo-PSDVODataStringLiteral -Value $Operation
+        $triggerUriLiteral = ConvertTo-PSDVODataStringLiteral -Value $TriggerUri
+        $existingWebhookQuery = "eventhandler_serviceendpoint ne null and eventhandler_serviceendpoint/serviceendpointid ne null and sdkmessagefilterid/primaryobjecttypecode eq $tableLiteral and sdkmessageid/name eq $operationLiteral and eventhandler_serviceendpoint/url eq $triggerUriLiteral"
         $existingWebhook = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessageprocessingsteps" -Select "sdkmessageprocessingstepid,name" -Expand "eventhandler_serviceendpoint(`$select=serviceendpointid,name,url)" -Filter $existingWebhookQuery
         
         if ($existingWebhook -and $existingWebhook.Count -gt 0) {
@@ -227,7 +230,8 @@ function New-PSDVTableWebHook {
         }
 
         if ($PSBoundParameters.ContainsKey('AuthSecret')) {
-            $serviceEndPointSetup["authvalue"] = "<settings><setting name=""x-dv-webhook-secret"" value=""$AuthSecret""/></settings>"
+            $escapedAuthSecret = ConvertTo-PSDVXmlAttributeValue -Value $AuthSecret
+            $serviceEndPointSetup["authvalue"] = "<settings><setting name=""x-dv-webhook-secret"" value=""$escapedAuthSecret""/></settings>"
         } else {
             $serviceEndPointSetup["authvalue"] = "<settings></settings>"
         }
@@ -245,7 +249,8 @@ function New-PSDVTableWebHook {
 
         # Step 2: Get SDK message ID
         Write-Verbose "Retrieving SDK message ID for operation: $Operation"
-        $sdkMessage = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessages" -Select "sdkmessageid,name" -Filter "name eq '$Operation'"
+        $operationLiteral = ConvertTo-PSDVODataStringLiteral -Value $Operation
+        $sdkMessage = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessages" -Select "sdkmessageid,name" -Filter "name eq $operationLiteral"
         
         if (-not $sdkMessage -or $sdkMessage.Count -eq 0) {
             throw "SDK message '$Operation' not found"
@@ -256,7 +261,9 @@ function New-PSDVTableWebHook {
 
         # Step 3: Get SDK message filter ID
         Write-Verbose "Retrieving SDK message filter for table '$Table' and operation '$Operation'"
-        $sdkMessageFilter = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessagefilters" -Select "sdkmessagefilterid,primaryobjecttypecode" -Filter "primaryobjecttypecode eq '$Table' and sdkmessageid/name eq '$Operation'"
+        $tableLiteral = ConvertTo-PSDVODataStringLiteral -Value $Table
+        $operationLiteral = ConvertTo-PSDVODataStringLiteral -Value $Operation
+        $sdkMessageFilter = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessagefilters" -Select "sdkmessagefilterid,primaryobjecttypecode" -Filter "primaryobjecttypecode eq $tableLiteral and sdkmessageid/name eq $operationLiteral"
         
         if (-not $sdkMessageFilter -or $sdkMessageFilter.Count -eq 0) {
             throw "SDK message filter for table '$Table' and operation '$Operation' not found"

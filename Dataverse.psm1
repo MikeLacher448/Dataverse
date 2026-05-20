@@ -11,23 +11,25 @@ $script:PSDVAzureAuthorityHosts = @{
 $privateFunctions = @(
     'Import-PSDVAzureIdentityAssemblies',
     'ConvertFrom-PSDVSecureString',
+    'ConvertTo-PSDVODataStringLiteral',
+    'ConvertTo-PSDVXmlAttributeValue',
+    'Join-PSDVQueryString',
+    'Get-PSDVEntitySetFromLogicalName',
+    'Confirm-PSDVItemDataAttributes',
+    'ConvertTo-PSDVLookupItemData',
+    'Set-PSDVAccessToken',
     'Get-PSDVAzureAuthorityHost',
-    'Get-PSDVTokenScope',
-    'ConvertTo-PSDVSdkAccessToken',
-    'Get-PSDVCertificateByThumbprint',
-    'Get-PSDVCertificateFromPath',
     'New-PSDVClientSecretCredential',
     'New-PSDVClientCertificateCredential',
     'New-PSDVManagedIdentityCredential',
     'New-PSDVInteractiveCredential',
-    'New-PSDVAzureCredential',
     'Get-PSDVFunctionRuntimeManagedIdentityAccessToken',
     'Get-PSDVAccessToken'
 )
 
 $publicFunctions = @(
     'Connect-PSDVOrg',
-    'Update-PSDVAccessToken',
+    'Disconnect-PSDVOrg',
     'Invoke-PSDVWebRequest',
     'Read-PSDVTableData',
     'Get-PSDVTableDetail',

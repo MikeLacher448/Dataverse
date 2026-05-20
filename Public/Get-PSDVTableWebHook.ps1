@@ -87,10 +87,6 @@ function Get-PSDVTableWebHook {
         $IncludeSystemWebHooks
     )
 
-    if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
-        throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
-    }
-
     try {
         Write-Verbose "Retrieving webhook registrations for table: $Table"
         
@@ -99,16 +95,19 @@ function Get-PSDVTableWebHook {
         $expand = "eventhandler_serviceendpoint(`$select=serviceendpointid,name,url,authtype,iscustomizable),sdkmessagefilterid(`$select=sdkmessagefilterid,primaryobjecttypecode),sdkmessageid(`$select=sdkmessageid,name)"
         
         # Filter for webhook steps (eventhandler_serviceendpoint exists) and specific table
-        $filter = "eventhandler_serviceendpoint ne null and eventhandler_serviceendpoint/serviceendpointid ne null and sdkmessagefilterid/primaryobjecttypecode eq '$Table'"
+        $tableLiteral = ConvertTo-PSDVODataStringLiteral -Value $Table
+        $filter = "eventhandler_serviceendpoint ne null and eventhandler_serviceendpoint/serviceendpointid ne null and sdkmessagefilterid/primaryobjecttypecode eq $tableLiteral"
         
         # Add operation filter if specified
         if ($PSBoundParameters.ContainsKey('Operation')) {
-            $filter += " and sdkmessageid/name eq '$Operation'"
+            $operationLiteral = ConvertTo-PSDVODataStringLiteral -Value $Operation
+            $filter += " and sdkmessageid/name eq $operationLiteral"
         }
 
         # Add URL filter if specified
         if ($PSBoundParameters.ContainsKey('Url')) {
-            $filter += " and eventhandler_serviceendpoint/url eq '$Url'"
+            $urlLiteral = ConvertTo-PSDVODataStringLiteral -Value $Url
+            $filter += " and eventhandler_serviceendpoint/url eq $urlLiteral"
         }
 
         # Add stage filter if specified
@@ -124,7 +123,8 @@ function Get-PSDVTableWebHook {
 
         # Add name filter if specified (use 'contains' for partial matching)
         if ($PSBoundParameters.ContainsKey('Name')) {
-            $filter += " and contains(name,'$Name')"
+            $nameLiteral = ConvertTo-PSDVODataStringLiteral -Value $Name
+            $filter += " and contains(name,$nameLiteral)"
         }
 
         # Filter out system webhooks by default (more efficient than filtering locally)
@@ -132,7 +132,7 @@ function Get-PSDVTableWebHook {
             $filter += " and eventhandler_serviceendpoint/iscustomizable/Value eq true"
         }
 
-        $webhookSteps = Invoke-PSDVWebRequest -WebUri "api/data/v9.2/sdkmessageprocessingsteps" -Select $select -Expand $expand -Filter $filter
+        $webhookSteps = Invoke-PSDVWebRequest -WebUri 'sdkmessageprocessingsteps' -Select $select -Expand $expand -Filter $filter
         
         if (-not $webhookSteps -or $webhookSteps.Count -eq 0) {
             Write-Verbose "No webhook registrations found for table '$Table'"

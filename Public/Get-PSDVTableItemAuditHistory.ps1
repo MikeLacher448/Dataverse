@@ -35,8 +35,8 @@ function Get-PSDVTableItemAuditHistory {
         [String]
         $Table,
 
-        [parameter()]
-        [String]
+        [parameter(Mandatory)]
+        [Guid]
         $ItemID,
 
         [parameter()]
@@ -48,26 +48,31 @@ function Get-PSDVTableItemAuditHistory {
         throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
     }
 
-
-    Update-PSDVAccessToken
+    if ($ItemID -eq [Guid]::Empty) {
+        throw 'ItemID cannot be an empty GUID'
+    }
 
     $requestHeaders = @{'Prefer' = 'odata.include-annotations="*"' }
 
-    $queryFilter = "objecttypecode eq '$Table' and _objectid_value eq '$ItemID'"
+    $tableLiteral = ConvertTo-PSDVODataStringLiteral -Value $Table
+    $queryFilter = "objecttypecode eq $tableLiteral and _objectid_value eq $ItemID"
 
     if ($PSBoundParameters.ContainsKey('Select')) {
       $selectQuery = $Select -join ','
     }
 
-    $dvRequestUri = $Global:DATAVERSEORGURL + 'api/data/v9.2/audits'
-
-    $dvRequestUri += "?`$filter=$queryFilter"
-
-    if ($selectQuery.Length -gt 0) {
-        $dvRequestUri += "&`$select=$selectQuery"
+    $invokeParameters = @{
+        WebUri  = 'audits'
+        Headers = $requestHeaders
+        Method  = 'Get'
+        Filter  = $queryFilter
     }
 
-    return (Invoke-PSDVWebRequest -WebUri  $dvRequestUri -Headers $requestHeaders -Method 'Get')
+    if (-not [string]::IsNullOrWhiteSpace($selectQuery)) {
+        $invokeParameters.Select = $selectQuery
+    }
+
+    return (Invoke-PSDVWebRequest @invokeParameters)
 
 }
 

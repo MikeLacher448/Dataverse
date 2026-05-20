@@ -70,22 +70,18 @@ function Get-PSDVTableItem {
     param(
         [parameter(Mandatory, ParameterSetName = 'TableLogicalNameItemLookup')]
         [parameter(Mandatory, ParameterSetName = 'TableLogicalNameQuery')]
-        [parameter(Mandatory, ParameterSetName = 'TableLogicalNameItemLookupLegacy')]
         [parameter(Mandatory, ParameterSetName = 'TableLogicalNameQueryLegacy')]
         [String]
         $Table,
 
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetNameItemLookup')]
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetNameQuery')]
-        [parameter(Mandatory, ParameterSetName = 'TableEntitySetNameItemLookupLegacy')]
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetNameQueryLegacy')]
         [string]
         $EntitySet,
 
         [parameter(Mandatory, ParameterSetName = 'TableLogicalNameItemLookup')]
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetNameItemLookup')]
-        [parameter(Mandatory, ParameterSetName = 'TableLogicalNameItemLookupLegacy')]
-        [parameter(Mandatory, ParameterSetName = 'TableEntitySetNameItemLookupLegacy')]
         [guid]
         $ItemID,
 
@@ -121,15 +117,15 @@ function Get-PSDVTableItem {
 
         [parameter(ParameterSetName = 'TableLogicalNameQueryLegacy')]
         [parameter(ParameterSetName = 'TableEntitySetNameQueryLegacy')]
-        [parameter(ParameterSetName = 'TableLogicalNameItemLookupLegacy')]
-        [parameter(ParameterSetName = 'TableEntitySetNameItemLookupLegacy')]
+        [parameter(ParameterSetName = 'TableLogicalNameItemLookup')]
+        [parameter(ParameterSetName = 'TableEntitySetNameItemLookup')]
         [string]
         $ExpandQuery,
 
         [parameter(ParameterSetName = 'TableLogicalNameQueryLegacy')]
         [parameter(ParameterSetName = 'TableEntitySetNameQueryLegacy')]
-        [parameter(ParameterSetName = 'TableLogicalNameItemLookupLegacy')]
-        [parameter(ParameterSetName = 'TableEntitySetNameItemLookupLegacy')]
+        [parameter(ParameterSetName = 'TableLogicalNameItemLookup')]
+        [parameter(ParameterSetName = 'TableEntitySetNameItemLookup')]
         [String[]]
         $SelectFields
 
@@ -139,18 +135,17 @@ function Get-PSDVTableItem {
         throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
     }
 
+    if ($PSBoundParameters.ContainsKey('ItemID') -and $ItemID -eq [Guid]::Empty) {
+        throw 'ItemID cannot be an empty GUID'
+    }
+
     if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
-        try {
-            $EntitySet = (Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName='$Table')" -Select 'EntitySetName').EntitySetName
-        }
-        catch {
-            throw "Cannot find table $Table in Dataverse Environment. $($_.InvocationInfo.MyCommand.Name),  $($_.InvocationInfo.InvocationName) , $($_ | Out-String)"
-        }
+        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
     }
 
 
-    if (($PSCmdlet.ParameterSetName).Contains(('Legacy'))) {
-        Write-Warning "The ParameterSet $($PSCmdlet.ParameterSetName) is deprecated and will be removed in future releases. Please use -Select, -Filter and -Expand parameters instead of -SelectFields, -FilterQuery and -ExpandQuery"
+    if (($PSCmdlet.ParameterSetName).Contains(('Legacy')) -or $PSBoundParameters.ContainsKey('SelectFields') -or $PSBoundParameters.ContainsKey('ExpandQuery')) {
+        Write-Warning "The legacy parameters -SelectFields, -FilterQuery and -ExpandQuery are deprecated and will be removed in future releases. Please use -Select, -Filter and -Expand parameters instead."
 
         if ($PSBoundParameters.ContainsKey('SelectFields')) {
             $Select = $SelectFields
@@ -169,48 +164,30 @@ function Get-PSDVTableItem {
 
     $requestHeaders = @{'Prefer' = 'odata.include-annotations="*"' }
 
-    if ($Select.Length -gt 0) {
-        $selectQuery = '$select=' + ($Select -join ',')
-    }
-
-    #build the dv web query
-    $dvRequestUri = [System.UriBuilder]::new($Global:DATAVERSEORGURL + "api/data/v9.2/$EntitySet")
+    $webUri = $EntitySet
 
     if ($PSBoundParameters.ContainsKey('ItemID')) {
-        $dvRequestUri.Path += "($ItemID)"
+        $webUri += "($ItemID)"
     }
 
-    if ($selectQuery.Length -gt 0) {
-        $dvRequestUri.Query = $selectQuery
+    $invokeParameters = @{
+        WebUri  = $webUri
+        Headers = $requestHeaders
     }
 
-    if ($Filter.Length -gt 0){
-        if ($dvRequestUri.Query.Length -gt 0) {
-            $dvRequestUri.Query += "&`$filter=$Filter"
-        }
-        else {
-            $dvRequestUri.Query = "`$filter=$Filter"
-        }
+    if ($Select -and $Select.Length -gt 0) {
+        $invokeParameters.Select = $Select -join ','
     }
-
-    if ($Expand.Length -gt 0) {
-        if ($dvRequestUri.Query.Length -gt 0) {
-            $dvRequestUri.Query += "&`$expand=$Expand"
-        }
-        else {
-            $dvRequestUri.Query = "`$expand=$Expand"
-        }
+    if (-not [string]::IsNullOrWhiteSpace($Filter)) {
+        $invokeParameters.Filter = $Filter
     }
-
+    if (-not [string]::IsNullOrWhiteSpace($Expand)) {
+        $invokeParameters.Expand = $Expand
+    }
     if ($PSBoundParameters.ContainsKey('Top')) {
-        if ($dvRequestUri.Query.Length -gt 0) {
-            $dvRequestUri.Query += "&`$top=$Top"
-        }
-        else {
-            $dvRequestUri.Query = "`$top=$Top"
-        }
+        $invokeParameters.Top = $Top
     }
 
-    return (Invoke-PSDVWebRequest -WebUri  $($dvRequestUri.Uri.AbsoluteUri) -Headers $requestHeaders)
+    return (Invoke-PSDVWebRequest @invokeParameters)
 }
 

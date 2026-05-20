@@ -53,18 +53,16 @@ function Get-PSDVTableColumn {
         $ColumnName
     )
 
-    if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
-        throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
-    }
-
     # Build the base URI for the attributes endpoint
-    $baseUri = $Global:DATAVERSEORGURL + "api/data/v9.2/EntityDefinitions(LogicalName='$Table')/Attributes"
+    $tableLiteral = ConvertTo-PSDVODataStringLiteral -Value $Table
+    $baseUri = "EntityDefinitions(LogicalName=$tableLiteral)/Attributes"
     
     # If specific column names are provided, build a filter expression
     if ($ColumnName -and $ColumnName.Count -gt 0) {
         $filterConditions = @()
         foreach ($column in $ColumnName) {
-            $filterConditions += "LogicalName eq '$column'"
+            $columnLiteral = ConvertTo-PSDVODataStringLiteral -Value $column
+            $filterConditions += "LogicalName eq $columnLiteral"
         }
         $filterExpression = $filterConditions -join ' or '
         $webResponse = Invoke-PSDVWebRequest -Method Get -WebUri $baseUri -Filter $filterExpression
@@ -76,7 +74,7 @@ function Get-PSDVTableColumn {
     # Get picklist metadata for choice columns (both local and global choices)
     $picklistData = @{}
     try {
-        $picklistUri = "EntityDefinitions(LogicalName='$Table')/Attributes/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
+        $picklistUri = "EntityDefinitions(LogicalName=$tableLiteral)/Attributes/Microsoft.Dynamics.CRM.PicklistAttributeMetadata"
         $picklistResponse = Invoke-PSDVWebRequest -Method Get -WebUri $picklistUri -Expand "OptionSet,GlobalOptionSet"
 
         if ($picklistResponse) {

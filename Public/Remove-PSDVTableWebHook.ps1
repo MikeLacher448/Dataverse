@@ -27,12 +27,16 @@ function Remove-PSDVTableWebHook {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
-        [String]
+        [Guid]
         $ServiceEndpointId
     )
 
     if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
         throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
+    }
+
+    if ($ServiceEndpointId -eq [Guid]::Empty) {
+        throw 'ServiceEndpointId cannot be an empty GUID'
     }
 
     try {
@@ -57,7 +61,7 @@ function Remove-PSDVTableWebHook {
             foreach ($step in $associatedSteps) {
                 if ($PSCmdlet.ShouldProcess("Webhook Step '$($step.name)' ($($step.sdkmessageprocessingstepid))", "Delete associated webhook step")) {
                     Write-Verbose "Deleting webhook step: $($step.sdkmessageprocessingstepid) - $($step.name)"
-                    $stepUri = $Global:DATAVERSEORGURL + "api/data/v9.2/sdkmessageprocessingsteps($($step.sdkmessageprocessingstepid))"
+                    $stepUri = "sdkmessageprocessingsteps($($step.sdkmessageprocessingstepid))"
                     Invoke-PSDVWebRequest -WebUri $stepUri -Method 'Delete'
                     Write-Verbose "Successfully deleted webhook step: $($step.name)"
                 } else {
@@ -69,7 +73,7 @@ function Remove-PSDVTableWebHook {
         }
 
         $requestHeaders = @{'Prefer' = 'odata.include-annotations="*"' }
-        $dvRequestUri = $Global:DATAVERSEORGURL + "api/data/v9.2/serviceendpoints($ServiceEndpointId)"
+        $dvRequestUri = "serviceendpoints($ServiceEndpointId)"
 
         if ($PSCmdlet.ShouldProcess("Service Endpoint '$endpointName' ($ServiceEndpointId)", "Delete webhook")) {
             Write-Verbose "Deleting service endpoint: $ServiceEndpointId"
