@@ -12,10 +12,10 @@
 RootModule = 'Dataverse.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.0'
+ModuleVersion = '1.1.0'
 
 # Supported PSEditions
-CompatiblePSEditions = @('Desktop', 'Core')
+CompatiblePSEditions = @('Core')
 
 # ID used to uniquely identify this module
 GUID = 'b8d2f4a6-3c5e-4f1d-9a8b-7e2c1f5d3a9e'
@@ -51,9 +51,7 @@ PowerShellVersion = '7.3'
 # ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-RequiredModules = @(
-    @{ModuleName = 'Az.Accounts'; ModuleVersion = '3.0.0'}
-)
+RequiredModules = @()
 
 # Assemblies that must be loaded prior to importing this module
 # RequiredAssemblies = @()
@@ -73,7 +71,7 @@ RequiredModules = @(
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
 FunctionsToExport = @(
     'Connect-PSDVOrg',
-    'Update-PSDVAccessToken',
+    'Disconnect-PSDVOrg',
     'Invoke-PSDVWebRequest',
     'Read-PSDVTableData',
     'Get-PSDVTableDetail',
@@ -83,7 +81,11 @@ FunctionsToExport = @(
     'Get-PSDVTableItemChangeHistory',
     'New-PSDVTableItem',
     'Update-PSDVTableItem',
-    'Remove-PSDVTableItem'
+    'Remove-PSDVTableItem',
+    'New-PSDVTableWebHook',
+    'Get-PSDVTableWebHook',
+    'Remove-PSDVTableWebHook',
+    'Update-PSDVTableWebHookAuthSecret'
 )
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
@@ -123,22 +125,28 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
-Dataverse v1.0.0 - Initial Release
+    Dataverse v1.1.0 - Authentication and Reliability Updates
 
-This is the initial release of the Dataverse PowerShell module providing comprehensive Microsoft Dataverse integration capabilities.
+    This release removes the direct Az.Accounts dependency, bundles Azure.Identity authentication dependencies, supports externally supplied bearer tokens, and hardens request construction and session handling.
 
 Key Features:
 - Multiple authentication methods (Service Principal, Managed Identity, Interactive)
+    - Browser-based interactive authentication support for MFA and Conditional Access
+    - Direct bearer token authentication via Connect-PSDVOrg -AccessToken for Azure Cloud Shell and other hosts with existing Azure authentication tooling
 - Complete CRUD operations for Dataverse tables and records
-- Advanced OData querying with filters, expansion, and field selection
+    - Advanced OData querying with encoded filters, expansion, and field selection
 - Table and column metadata operations with filtering support
 - Audit history and change tracking capabilities
-- Automatic token refresh and session management
+    - Automatic token refresh validation and session cleanup with Disconnect-PSDVOrg
 - Support for large result set pagination
 - PowerShell 7.3+ compatibility with Constrained Language Mode support
 - PSScriptAnalyzer compliant code following best practices
 - Comprehensive help documentation with examples
-- Module installation and testing utilities
+- Native PowerShellGet installation with bundled authentication dependencies
+- Optional FunctionRuntime managed identity token acquisition to avoid loading Azure.Identity in Azure Functions/App Service hosts
+    - Hardened GUID validation, webhook secret escaping, and pagination error handling
+    - Deprecated SubscriptionId and legacy table query parameters for future removal
+    - Added Pester test coverage for public and private module functions
 
 For detailed documentation, visit: https://github.com/microsoft/Dataverse
 '@

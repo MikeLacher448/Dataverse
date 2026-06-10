@@ -1,6 +1,8 @@
 # PowerShell artifacts
 *.pdb
 *.dll
+# Bundled Azure.Identity dependency set is intentionally committed with the module.
+!lib/**/*.dll
 *.exe
 *.cache
 
