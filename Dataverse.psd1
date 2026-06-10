@@ -15,7 +15,7 @@ RootModule = 'Dataverse.psm1'
 ModuleVersion = '1.1.0'
 
 # Supported PSEditions
-CompatiblePSEditions = @('Desktop', 'Core')
+CompatiblePSEditions = @('Core')
 
 # ID used to uniquely identify this module
 GUID = 'b8d2f4a6-3c5e-4f1d-9a8b-7e2c1f5d3a9e'
@@ -127,11 +127,12 @@ PrivateData = @{
         ReleaseNotes = @'
     Dataverse v1.1.0 - Authentication and Reliability Updates
 
-    This release removes the direct Az.Accounts dependency, bundles Azure.Identity authentication dependencies, and hardens request construction and session handling.
+    This release removes the direct Az.Accounts dependency, bundles Azure.Identity authentication dependencies, supports externally supplied bearer tokens, and hardens request construction and session handling.
 
 Key Features:
 - Multiple authentication methods (Service Principal, Managed Identity, Interactive)
     - Browser-based interactive authentication support for MFA and Conditional Access
+    - Direct bearer token authentication via Connect-PSDVOrg -AccessToken for Azure Cloud Shell and other hosts with existing Azure authentication tooling
 - Complete CRUD operations for Dataverse tables and records
     - Advanced OData querying with encoded filters, expansion, and field selection
 - Table and column metadata operations with filtering support
@@ -145,6 +146,7 @@ Key Features:
 - Optional FunctionRuntime managed identity token acquisition to avoid loading Azure.Identity in Azure Functions/App Service hosts
     - Hardened GUID validation, webhook secret escaping, and pagination error handling
     - Deprecated SubscriptionId and legacy table query parameters for future removal
+    - Added Pester test coverage for public and private module functions
 
 For detailed documentation, visit: https://github.com/microsoft/Dataverse
 '@

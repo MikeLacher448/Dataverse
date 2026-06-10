@@ -66,6 +66,15 @@ Describe 'Set-PSDVAccessToken' {
         Should -Invoke -CommandName Invoke-RestMethod -ModuleName Dataverse -Times 1 -Exactly
     }
 
+    It 'throws a reconnect error when a supplied access token needs refresh' {
+        InModuleScope Dataverse {
+            $Global:DATAVERSEAUTHCONTEXT = New-PSDVTestAuthContext -ParameterSetName 'AccessToken'
+            $Global:DATAVERSEACCESSTOKEN = New-PSDVTestAccessToken -ExpiresOn (Get-Date).ToUniversalTime().AddMinutes(-1)
+
+            { Set-PSDVAccessToken } | Should -Throw -ExpectedMessage 'The access token supplied to Connect-PSDVOrg has expired or is about to expire and cannot be refreshed automatically*'
+        }
+    }
+
     It 'throws when a token result has no Token value' {
         InModuleScope Dataverse {
             $authContext = New-PSDVTestAuthContext
