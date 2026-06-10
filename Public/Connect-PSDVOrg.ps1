@@ -50,6 +50,12 @@ function Connect-PSDVOrg {
     .PARAMETER ManagedIdentityTokenSource
     Controls how managed identity tokens are acquired. AzureIdentity uses the bundled Azure.Identity SDK. FunctionRuntime calls the Azure Functions/App Service managed identity endpoint directly without loading Azure.Identity.
 
+    .PARAMETER AccessToken
+    A bearer access token (secure string) already acquired for the Dataverse resource using external tooling such as Get-AzAccessToken or 'az account get-access-token'. When supplied, the module uses this token directly and does not load Azure.Identity or acquire a token itself. The token cannot be refreshed automatically; reconnect with a new token when it expires.
+
+    .PARAMETER AccessTokenExpiresOn
+    The expiration time of the supplied access token. If omitted, the expiration is read from the token's 'exp' claim when possible. Provide this value (for example, the ExpiresOn returned by Get-AzAccessToken) when the expiration cannot be determined automatically.
+
     .EXAMPLE
     Connect-PSDVOrg -AzureTenantId "12345678-1234-1234-1234-123456789012" -DataverseOrgURL "https://contoso.crm.dynamics.com/"
 
@@ -80,6 +86,12 @@ function Connect-PSDVOrg {
     Connect-PSDVOrg -UseSystemManagedIdentity -ManagedIdentityTokenSource FunctionRuntime -DataverseOrgURL "https://contoso.crm.dynamics.com/"
 
     Connects to Dataverse using the Azure Functions/App Service managed identity endpoint directly without loading Azure.Identity.
+
+    .EXAMPLE
+    $token = Get-AzAccessToken -ResourceUrl "https://contoso.crm.dynamics.com/" -AsSecureString
+    Connect-PSDVOrg -AccessToken $token.Token -AccessTokenExpiresOn $token.ExpiresOn -DataverseOrgURL "https://contoso.crm.dynamics.com/"
+
+    Connects to Dataverse using a bearer token acquired with Get-AzAccessToken, without loading Azure.Identity.
     #>
 
     [CmdletBinding(DefaultParameterSetName = 'InteractiveLogin')]
@@ -148,7 +160,15 @@ function Connect-PSDVOrg {
         [Parameter(ParameterSetName = 'SystemManagedIdentity')]
         [ValidateSet('AzureIdentity', 'FunctionRuntime')]
         [String]
-        $ManagedIdentityTokenSource = 'AzureIdentity'
+        $ManagedIdentityTokenSource = 'AzureIdentity',
+
+        [Parameter(Mandatory, ParameterSetName = 'AccessToken')]
+        [SecureString]
+        $AccessToken,
+
+        [Parameter(ParameterSetName = 'AccessToken')]
+        [DateTimeOffset]
+        $AccessTokenExpiresOn
     )
 
     #Ensure DataverseOrgURL has a trailing slash
@@ -176,11 +196,54 @@ function Connect-PSDVOrg {
         UseDeviceCode     = $UseDeviceCode.IsPresent
         ManagedIdentityTokenSource = $ManagedIdentityTokenSource
     }
-    
+
+    $suppliedAccessToken = $null
+    if ($PSCmdlet.ParameterSetName -eq 'AccessToken') {
+        if ($PSBoundParameters.ContainsKey('AccessTokenExpiresOn')) {
+            $tokenExpiresOn = $AccessTokenExpiresOn.UtcDateTime
+        }
+        else {
+            $tokenExpiresOn = $null
+            try {
+                $rawToken = ConvertFrom-PSDVSecureString -SecureString $AccessToken
+                $tokenParts = $rawToken.Split('.')
+                if ($tokenParts.Count -ge 2) {
+                    $payloadSegment = $tokenParts[1].Replace('-', '+').Replace('_', '/')
+                    switch ($payloadSegment.Length % 4) {
+                        2 { $payloadSegment += '==' }
+                        3 { $payloadSegment += '=' }
+                    }
+                    $payloadJson = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($payloadSegment))
+                    $payloadClaims = $payloadJson | ConvertFrom-Json
+                    if (($payloadClaims.PSObject.Properties.Name -contains 'exp') -and $payloadClaims.exp) {
+                        $tokenExpiresOn = [DateTimeOffset]::FromUnixTimeSeconds([long]$payloadClaims.exp).UtcDateTime
+                    }
+                }
+            }
+            catch {
+                $tokenExpiresOn = $null
+            }
+
+            if ($null -eq $tokenExpiresOn) {
+                throw 'Unable to determine the supplied access token expiration. Provide -AccessTokenExpiresOn (for example, the ExpiresOn value returned by Get-AzAccessToken).'
+            }
+        }
+
+        $suppliedAccessToken = [PSCustomObject]@{
+            Token     = $AccessToken
+            ExpiresOn = $tokenExpiresOn
+        }
+    }
+
     try {
         Write-Verbose "Getting Dataverse Access Token for $DataverseOrgUrl"
-        $accessToken = Get-PSDVAccessToken -AuthContext $authContext
-        Set-PSDVAccessToken -AccessToken $accessToken -AuthContext $authContext -Operation 'Initial token acquisition'
+        if ($PSCmdlet.ParameterSetName -eq 'AccessToken') {
+            $dvAccessToken = $suppliedAccessToken
+        }
+        else {
+            $dvAccessToken = Get-PSDVAccessToken -AuthContext $authContext
+        }
+        Set-PSDVAccessToken -AccessToken $dvAccessToken -AuthContext $authContext -Operation 'Initial token acquisition'
         $Global:DATAVERSEAUTHCONTEXT = $authContext
         $Global:DATAVERSEORGURL = $DataverseOrgURL
     }

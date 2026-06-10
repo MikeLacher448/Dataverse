@@ -9,7 +9,8 @@ A comprehensive PowerShell module for interacting with Microsoft Dataverse envir
 - **Advanced Querying**: OData filters, field selection, record expansion, and automatic pagination
 - **Metadata Operations**: Retrieve table and column metadata information
 - **Audit and Change Tracking**: Access audit history and detailed change tracking
-- **PowerShell 7.3+ Compatible**: Modern PowerShell support with Constrained Language Mode (CLM) compatibility
+- **Webhook Management**: Register, inspect, update, and remove Dataverse table webhooks
+- **PowerShell 7.3+ Compatible**: Modern PowerShell support
 - **PSScriptAnalyzer Compliant**: Follows PowerShell best practices and coding standards
 
 ## Prerequisites
@@ -117,6 +118,27 @@ Connect-PSDVOrg -UseSystemManagedIdentity `
 
 Managed identity uses Azure.Identity by default for broad Azure host compatibility. Use `-ManagedIdentityTokenSource FunctionRuntime` only in Azure Functions or App Service environments where the managed identity runtime endpoint is available through `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`, or legacy App Service environments that expose `MSI_ENDPOINT` and `MSI_SECRET`. Azure VMs and other hosts should use the default AzureIdentity token source.
 
+#### Bearer Token Authentication
+
+When you already have a bearer token for the Dataverse resource (for example from `Get-AzAccessToken` or `az account get-access-token`), pass it directly. The module uses the token as-is and does not load Azure.Identity, which avoids assembly conflicts in hosts that preload other Azure modules (such as Azure Cloud Shell).
+
+```powershell
+# Acquire a token with Az PowerShell and pass it to the module
+$token = Get-AzAccessToken -ResourceUrl "https://yourorg.crm.dynamics.com/" -AsSecureString
+Connect-PSDVOrg -AccessToken $token.Token `
+                -AccessTokenExpiresOn $token.ExpiresOn `
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
+
+# Acquire a token with the Azure CLI
+$cliToken = az account get-access-token --resource "https://yourorg.crm.dynamics.com/" | ConvertFrom-Json
+$secureToken = ConvertTo-SecureString $cliToken.accessToken -AsPlainText -Force
+Connect-PSDVOrg -AccessToken $secureToken `
+                -AccessTokenExpiresOn ([DateTimeOffset]$cliToken.expiresOn) `
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
+```
+
+A supplied token cannot be refreshed automatically. When it expires, run `Connect-PSDVOrg` again with a fresh token. If `-AccessTokenExpiresOn` is omitted, the module reads the expiration from the token's `exp` claim when possible.
+
 `-SubscriptionId` is a deprecated compatibility parameter for older examples. It is no longer used and is planned for removal in the next major version.
 
 Disconnect when you are finished to clear the session-scoped connection state:
@@ -216,6 +238,13 @@ Access tokens are refreshed automatically by Dataverse operations when they are 
 - `Get-PSDVTableItemAuditHistory` - Get audit history
 - `Get-PSDVTableItemChangeHistory` - Get detailed change history
 
+### Webhook Functions
+
+- `New-PSDVTableWebHook` - Register a webhook for table create, update, delete, or retrieve events
+- `Get-PSDVTableWebHook` - Retrieve webhook registrations for a table, with filters for operation, URL, stage, or name
+- `Remove-PSDVTableWebHook` - Remove a webhook by deleting its service endpoint and associated processing steps
+- `Update-PSDVTableWebHookAuthSecret` - Set, rotate, or clear the `x-dv-webhook-secret` value for an existing webhook
+
 ## Advanced Examples
 
 ### Complex Filtering and Expansion
@@ -250,6 +279,37 @@ Get-PSDVTableItemAuditHistory -Table "account" -ItemID "record-guid"
 # Get detailed change history
 Get-PSDVTableItemChangeHistory -Table "account" -ItemID "record-guid"
 ```
+
+### Webhook Management
+
+```powershell
+# Register a webhook for account create events
+New-PSDVTableWebHook -Table "account" `
+                    -WebHookName "Account Create Webhook" `
+                    -TriggerUri "https://myapp.azurewebsites.net/api/dataverse" `
+                    -Operation "Create" `
+                    -AuthSecret "shared-secret"
+
+# Register an update webhook that only fires when selected columns change
+New-PSDVTableWebHook -Table "contact" `
+                    -WebHookName "Contact Email Monitor" `
+                    -TriggerUri "https://myapp.azurewebsites.net/api/dataverse" `
+                    -Operation "Update" `
+                    -FilteringAttributes @("emailaddress1", "telephone1") `
+                    -PreImage `
+                    -PreImageAttributes @("emailaddress1", "telephone1")
+
+# Review and rotate webhook secrets
+$webhook = Get-PSDVTableWebHook -Table "account" -Name "Account Create Webhook"
+Update-PSDVTableWebHookAuthSecret -Table "account" `
+                                  -WebHookStepId $webhook.WebHookStepId `
+                                  -AuthSecret "new-shared-secret"
+
+# Remove a webhook
+Remove-PSDVTableWebHook -ServiceEndpointId $webhook.ServiceEndpointId
+```
+
+Webhook registration supports pre-operation and post-operation stages, synchronous or asynchronous mode, update filtering attributes, and pre/post images for supported operations.
 
 ## Error Handling
 
@@ -298,11 +358,11 @@ This module follows PowerShell best practices and PSScriptAnalyzer rules. When c
 
 ## License
 
-[Specify your license here]
+This project is licensed under the terms in [LICENSE](LICENSE).
 
 ## Support
 
-[Specify support information here]
+This software is provided as-is, without warranty or guaranteed support. If you find a bug, have a question, or want to request an enhancement, open an issue in the GitHub repository with the module version, PowerShell version, and enough detail to reproduce the behavior.
 
 ## Changelog
 
@@ -310,9 +370,12 @@ This module follows PowerShell best practices and PSScriptAnalyzer rules. When c
 
 - Removed the direct Az.Accounts dependency and use bundled Azure.Identity authentication dependencies.
 - Added browser-based interactive authentication support for MFA and Conditional Access scenarios.
+- Added bearer token authentication with `Connect-PSDVOrg -AccessToken` for users who acquire tokens with existing Azure tooling such as `Get-AzAccessToken` or Azure CLI.
 - Added optional FunctionRuntime managed identity token acquisition for Azure Functions/App Service hosts.
 - Added `Disconnect-PSDVOrg` to clear session connection state.
+- Added webhook management cmdlets: `New-PSDVTableWebHook`, `Get-PSDVTableWebHook`, `Remove-PSDVTableWebHook`, and `Update-PSDVTableWebHookAuthSecret`.
 - Hardened OData query encoding, pagination failure handling, token validation, GUID validation, and webhook secret escaping.
+- Added automated Pester coverage across public and private module functions.
 - Deprecated legacy `-SubscriptionId`, `-FilterQuery`, `-ExpandQuery`, and `-SelectFields` parameters.
 
 ### Version 1.0.0

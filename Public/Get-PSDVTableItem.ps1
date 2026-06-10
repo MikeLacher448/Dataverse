@@ -144,7 +144,7 @@ function Get-PSDVTableItem {
     }
 
 
-    if (($PSCmdlet.ParameterSetName).Contains(('Legacy')) -or $PSBoundParameters.ContainsKey('SelectFields') -or $PSBoundParameters.ContainsKey('ExpandQuery')) {
+    if (($PSCmdlet.ParameterSetName).Contains('Legacy') -or $PSBoundParameters.ContainsKey('SelectFields') -or $PSBoundParameters.ContainsKey('ExpandQuery')) {
         Write-Warning "The legacy parameters -SelectFields, -FilterQuery and -ExpandQuery are deprecated and will be removed in future releases. Please use -Select, -Filter and -Expand parameters instead."
 
         if ($PSBoundParameters.ContainsKey('SelectFields')) {
