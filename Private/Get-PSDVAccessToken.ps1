@@ -27,30 +27,8 @@ function Get-PSDVAccessToken {
     }
 
     $scope = "$($AuthContext.ResourceUrl.TrimEnd('/'))/.default"
-
-    # Resolve the GetToken method and its TokenRequestContext parameter type directly from the
-    # credential instance. In hosts that preload the Az modules (e.g. Azure Cloud Shell), more than
-    # one version of Azure.Core can be present. Binding the [Azure.Core.TokenRequestContext] literal
-    # may resolve to a different Azure.Core than the one the credential's GetToken expects, producing
-    # "Cannot find an overload for GetToken and the argument count 2". Using reflection guarantees the
-    # argument type matches the loaded credential's method signature.
-    $getTokenMethod = $AuthContext.Credential.GetType().GetMethod(
-        'GetToken',
-        [System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::Public)
-    if ($null -eq $getTokenMethod) {
-        throw "The configured credential of type '$($AuthContext.Credential.GetType().FullName)' does not expose a GetToken method."
-    }
-
-    $tokenRequestContextType = $getTokenMethod.GetParameters()[0].ParameterType
-    $tokenRequestContextCtor = $tokenRequestContextType.GetConstructor([Type[]]@([string[]]))
-    if ($null -eq $tokenRequestContextCtor) {
-        throw "Unable to construct '$($tokenRequestContextType.FullName)' for the token request."
-    }
-
-    $tokenRequestContext = $tokenRequestContextCtor.Invoke(@(, [string[]]@($scope)))
-    $sdkToken = $getTokenMethod.Invoke(
-        $AuthContext.Credential,
-        @($tokenRequestContext, [System.Threading.CancellationToken]::None))
+    $tokenRequestContext = [Azure.Core.TokenRequestContext]::new([String[]]@($scope))
+    $sdkToken = $AuthContext.Credential.GetToken($tokenRequestContext, [System.Threading.CancellationToken]::None)
 
     return [PSCustomObject]@{
         Token     = ConvertTo-SecureString -String $sdkToken.Token -AsPlainText -Force

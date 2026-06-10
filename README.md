@@ -117,6 +117,27 @@ Connect-PSDVOrg -UseSystemManagedIdentity `
 
 Managed identity uses Azure.Identity by default for broad Azure host compatibility. Use `-ManagedIdentityTokenSource FunctionRuntime` only in Azure Functions or App Service environments where the managed identity runtime endpoint is available through `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`, or legacy App Service environments that expose `MSI_ENDPOINT` and `MSI_SECRET`. Azure VMs and other hosts should use the default AzureIdentity token source.
 
+#### Bearer Token Authentication
+
+When you already have a bearer token for the Dataverse resource (for example from `Get-AzAccessToken` or `az account get-access-token`), pass it directly. The module uses the token as-is and does not load Azure.Identity, which avoids assembly conflicts in hosts that preload other Azure modules (such as Azure Cloud Shell).
+
+```powershell
+# Acquire a token with Az PowerShell and pass it to the module
+$token = Get-AzAccessToken -ResourceUrl "https://yourorg.crm.dynamics.com/" -AsSecureString
+Connect-PSDVOrg -AccessToken $token.Token `
+                -AccessTokenExpiresOn $token.ExpiresOn `
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
+
+# Acquire a token with the Azure CLI
+$cliToken = az account get-access-token --resource "https://yourorg.crm.dynamics.com/" | ConvertFrom-Json
+$secureToken = ConvertTo-SecureString $cliToken.accessToken -AsPlainText -Force
+Connect-PSDVOrg -AccessToken $secureToken `
+                -AccessTokenExpiresOn ([DateTimeOffset]$cliToken.expiresOn) `
+                -DataverseOrgURL "https://yourorg.crm.dynamics.com/"
+```
+
+A supplied token cannot be refreshed automatically. When it expires, run `Connect-PSDVOrg` again with a fresh token. If `-AccessTokenExpiresOn` is omitted, the module reads the expiration from the token's `exp` claim when possible.
+
 `-SubscriptionId` is a deprecated compatibility parameter for older examples. It is no longer used and is planned for removal in the next major version.
 
 Disconnect when you are finished to clear the session-scoped connection state:
