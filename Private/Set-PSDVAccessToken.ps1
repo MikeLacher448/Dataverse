@@ -23,6 +23,10 @@ function Set-PSDVAccessToken {
             return
         }
 
+        if ($AuthContext.ParameterSetName -eq 'AccessToken') {
+            throw 'The access token supplied to Connect-PSDVOrg has expired or is about to expire and cannot be refreshed automatically. Acquire a new token and run Connect-PSDVOrg again with the -AccessToken parameter.'
+        }
+
         Write-Verbose 'Refreshing Dataverse access token'
         $AccessToken = Get-PSDVAccessToken -AuthContext $AuthContext
         $Operation = 'Access token refresh'
