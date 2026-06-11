@@ -366,6 +366,11 @@ This software is provided as-is, without warranty or guaranteed support. If you 
 
 ## Changelog
 
+### Version 1.1.1
+
+- Fixed item data validation for lookup navigation properties supplied in OData bind format, such as `parentcustomerid_account@odata.bind`.
+- Preserved existing OData bind entries when `-ParseItemData` is used.
+
 ### Version 1.1.0
 
 - Removed the direct Az.Accounts dependency and use bundled Azure.Identity authentication dependencies.

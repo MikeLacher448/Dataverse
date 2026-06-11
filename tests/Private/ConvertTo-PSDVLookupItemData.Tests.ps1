@@ -36,4 +36,19 @@ Describe 'ConvertTo-PSDVLookupItemData' {
             $result.ContainsKey('parentcustomerid') | Should -BeFalse
         }
     }
+
+    It 'preserves existing OData bind entries' {
+        InModuleScope Dataverse {
+            $recordId = [Guid]::NewGuid()
+            $attributes = @{
+                fullname                              = New-PSDVTestMetadataAttribute -LogicalName 'fullname'
+                'parentcustomerid_account@odata.bind' = New-PSDVTestMetadataAttribute -LogicalName 'parentcustomerid' -AttributeType 'Lookup' -SchemaName 'parentcustomerid_account' -Targets @('account')
+            }
+
+            $result = ConvertTo-PSDVLookupItemData -ItemData @{ fullname = 'Ada'; 'parentcustomerid_account@odata.bind' = "/accounts($recordId)" } -AttributeDetails $attributes
+
+            $result.fullname | Should -BeExactly 'Ada'
+            $result['parentcustomerid_account@odata.bind'] | Should -BeExactly "/accounts($recordId)"
+        }
+    }
 }

@@ -23,13 +23,42 @@ function Confirm-PSDVItemDataAttributes {
     $tableColumns = Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName=$tableLiteral)/Attributes"
     $attributeDetails = @{}
     $invalidAttributes = @()
+    $tableRelationships = $null
+    $tableRelationshipsLoaded = $false
 
     foreach ($attribute in $ItemData.Keys) {
-        if ($tableColumns.LogicalName -notcontains $attribute) {
-            $invalidAttributes += $attribute
+        $attributeName = [string] $attribute
+        $attributeDetail = $tableColumns | Where-Object { $_.LogicalName -eq $attributeName } | Select-Object -Property AttributeType, SchemaName, Targets
+
+        if ($null -eq $attributeDetail -and $attributeName -like '*@odata.bind') {
+            $navigationProperty = $attributeName -replace '@odata\.bind$', ''
+            $attributeDetail = $tableColumns | Where-Object {
+                $_.AttributeType -eq 'Lookup' -and ($_.SchemaName -eq $navigationProperty -or $_.LogicalName -eq $navigationProperty)
+            } | Select-Object -Property AttributeType, SchemaName, Targets
+
+            if ($null -eq $attributeDetail) {
+                if (-not $tableRelationshipsLoaded) {
+                    $tableRelationships = Invoke-PSDVWebRequest -WebUri "EntityDefinitions(LogicalName=$tableLiteral)/ManyToOneRelationships" -Select 'ReferencingAttribute,ReferencingEntityNavigationPropertyName'
+                    $tableRelationshipsLoaded = $true
+                }
+
+                $relationship = $tableRelationships | Where-Object {
+                    $_.ReferencingEntityNavigationPropertyName -eq $navigationProperty
+                } | Select-Object -First 1
+
+                if ($null -ne $relationship) {
+                    $attributeDetail = $tableColumns | Where-Object {
+                        $_.LogicalName -eq $relationship.ReferencingAttribute
+                    } | Select-Object -Property AttributeType, SchemaName, Targets
+                }
+            }
+        }
+
+        if ($null -eq $attributeDetail) {
+            $invalidAttributes += $attributeName
         }
         else {
-            $attributeDetails.Add($attribute, ($tableColumns | Where-Object { $_.LogicalName -eq $attribute } | Select-Object -Property AttributeType, SchemaName, Targets))
+            $attributeDetails.Add($attributeName, $attributeDetail)
         }
     }
 

@@ -12,7 +12,7 @@
 RootModule = 'Dataverse.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.1.0'
+ModuleVersion = '1.1.1'
 
 # Supported PSEditions
 CompatiblePSEditions = @('Core')
@@ -125,28 +125,9 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
-    Dataverse v1.1.0 - Authentication and Reliability Updates
+Dataverse v1.1.1 - OData Bind Validation Bugfix
 
-    This release removes the direct Az.Accounts dependency, bundles Azure.Identity authentication dependencies, supports externally supplied bearer tokens, and hardens request construction and session handling.
-
-Key Features:
-- Multiple authentication methods (Service Principal, Managed Identity, Interactive)
-    - Browser-based interactive authentication support for MFA and Conditional Access
-    - Direct bearer token authentication via Connect-PSDVOrg -AccessToken for Azure Cloud Shell and other hosts with existing Azure authentication tooling
-- Complete CRUD operations for Dataverse tables and records
-    - Advanced OData querying with encoded filters, expansion, and field selection
-- Table and column metadata operations with filtering support
-- Audit history and change tracking capabilities
-    - Automatic token refresh validation and session cleanup with Disconnect-PSDVOrg
-- Support for large result set pagination
-- PowerShell 7.3+ compatibility with Constrained Language Mode support
-- PSScriptAnalyzer compliant code following best practices
-- Comprehensive help documentation with examples
-- Native PowerShellGet installation with bundled authentication dependencies
-- Optional FunctionRuntime managed identity token acquisition to avoid loading Azure.Identity in Azure Functions/App Service hosts
-    - Hardened GUID validation, webhook secret escaping, and pagination error handling
-    - Deprecated SubscriptionId and legacy table query parameters for future removal
-    - Added Pester test coverage for public and private module functions
+Fixes item data validation for lookup navigation properties supplied in OData bind format, such as parentcustomerid_account@odata.bind. The validator now accepts valid Dataverse relationship navigation properties while continuing to reject invalid attributes.
 
 For detailed documentation, visit: https://github.com/microsoft/Dataverse
 '@

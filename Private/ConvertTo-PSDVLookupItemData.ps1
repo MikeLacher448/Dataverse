@@ -13,7 +13,10 @@ function ConvertTo-PSDVLookupItemData {
     $parsedItemData = @{}
 
     foreach ($attribute in $AttributeDetails.Keys) {
-        if ($AttributeDetails[$attribute].AttributeType -eq 'Lookup') {
+        if ($attribute -like '*@odata.bind') {
+            $parsedItemData.Add($attribute, $ItemData[$attribute])
+        }
+        elseif ($AttributeDetails[$attribute].AttributeType -eq 'Lookup') {
             $navProperty = $AttributeDetails[$attribute].SchemaName
             $targetTable = $AttributeDetails[$attribute].Targets[0]
             $targetTableSet = Get-PSDVEntitySetFromLogicalName -Table $targetTable
