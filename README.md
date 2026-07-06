@@ -174,6 +174,12 @@ $accountData = @{
     telephone1 = "555-123-4567"
 }
 New-PSDVTableItem -Table "account" -ItemData $accountData
+
+$batchCreates = @(
+    @{ ItemData = @{ name = "First Company"; accountnumber = "ACC001" } },
+    @{ ItemData = @{ name = "Second Company"; accountnumber = "ACC002" } }
+)
+$batchCreateResult = New-PSDVTableItemBatch -Table "account" -Items $batchCreates
 ```
 
 #### Update Records
@@ -184,7 +190,38 @@ $updateData = @{
     telephone1 = "555-987-6543"
 }
 Update-PSDVTableItem -Table "account" -ItemID "record-guid" -ItemData $updateData
+
+$upsertData = @{
+    accountnumber = "ACC001"
+    name = "Upserted Company Name"
+}
+Invoke-PSDVTableItemUpsert -Table "account" -AlternateKeyColumnName "accountnumber" -ItemData $upsertData
+
+Invoke-PSDVTableItemUpsert -Table "account" `
+                          -AlternateKeyColumnName "accountnumber" `
+                          -AlternateKeyValue "ACC003" `
+                          -ItemData @{ name = "Create Only Company" } `
+                          -CreateOnly
+
+$batchUpdates = @(
+    @{ ItemID = "first-record-guid"; ItemData = @{ name = "First Updated Company" } },
+    @{ ItemID = "second-record-guid"; ItemData = @{ name = "Second Updated Company" } }
+)
+$batchUpdateResult = Update-PSDVTableItemBatch -Table "account" -Updates $batchUpdates
+
+$batchUpserts = @(
+    @{ AlternateKeyValue = "ACC001"; ItemData = @{ name = "First Upserted Company" } },
+    @{ ItemData = @{ accountnumber = "ACC002"; name = "Second Upserted Company" } }
+)
+$batchUpsertResult = Invoke-PSDVTableItemUpsertBatch -Table "account" -AlternateKeyColumnName "accountnumber" -Items $batchUpserts
+
+$batchCreateOnlyResult = Invoke-PSDVTableItemUpsertBatch -Table "account" `
+                                                        -AlternateKeyColumnName "accountnumber" `
+                                                        -Items $batchUpserts `
+                                                        -CreateOnly
 ```
+
+Batch commands return categorized per-request status results. Status codes `200`, `201`, and `204` count as `Created`; `409` and `412` count as `AlreadyExists`; all other or missing per-request statuses count as `Failed`.
 
 #### Delete Records
 
@@ -225,6 +262,10 @@ Access tokens are refreshed automatically by Dataverse operations when they are 
 - `Get-PSDVTableItem` - Retrieve records from tables
 - `New-PSDVTableItem` - Create new records
 - `Update-PSDVTableItem` - Update existing records
+- `Invoke-PSDVTableItemUpsert` - Upsert one record by alternate key, with optional create-only behavior
+- `New-PSDVTableItemBatch` - Create multiple records in one Dataverse batch request
+- `Update-PSDVTableItemBatch` - Update multiple records by ID in one Dataverse batch request
+- `Invoke-PSDVTableItemUpsertBatch` - Upsert multiple records by alternate key in one Dataverse batch request
 - `Remove-PSDVTableItem` - Delete records
 
 ### Metadata Functions

@@ -138,7 +138,7 @@ function Invoke-PSDVWebRequest {
             $Method = 'Post'
         }
 
-        $bodyContent = $Body | ConvertTo-Json
+        $bodyContent = $Body | ConvertTo-Json -Depth 10
         $httpHeaders = @{
             'Content-Type' = 'application/json'
             'Accept'       = 'application/json'

@@ -1,5 +1,17 @@
 # Dataverse PowerShell Module Release Notes
 
+## Unreleased
+
+### Added
+
+- Added alternate-key upsert support with `Invoke-PSDVTableItemUpsert` and optional `-CreateOnly` behavior for create-only requests.
+- Added batch create, update, and upsert commands: `New-PSDVTableItemBatch`, `Update-PSDVTableItemBatch`, and `Invoke-PSDVTableItemUpsertBatch`.
+- Batch commands now return categorized per-request results for created, already-existing, and failed outcomes.
+
+### Changed
+
+- Dataverse request bodies now support deeper JSON payloads when serialized for web requests.
+
 ## Version 1.1.1
 
 Release date: 2026-06-11
