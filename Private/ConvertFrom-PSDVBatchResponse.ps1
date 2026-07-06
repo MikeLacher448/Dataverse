@@ -12,7 +12,16 @@ function ConvertFrom-PSDVBatchResponse {
         $ExpectedCount
     )
 
-    $content = if ($null -eq $BatchResponse -or $null -eq $BatchResponse.Content) { '' } else { [string]$BatchResponse.Content }
+    $content = if ($null -eq $BatchResponse -or $null -eq $BatchResponse.Content) {
+        ''
+    }
+    elseif ($BatchResponse.Content -is [byte[]]) {
+        [System.Text.Encoding]::UTF8.GetString($BatchResponse.Content)
+    }
+    else {
+        [string]$BatchResponse.Content
+    }
+
     $statusMatches = [regex]::Matches($content, 'HTTP/\d(?:\.\d)?\s+(\d{3})')
     $statusCodes = @()
     $results = [System.Collections.Generic.List[object]]::new()

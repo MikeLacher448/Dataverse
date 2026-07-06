@@ -19,11 +19,21 @@ function Invoke-PSDVBatchRequest {
         -Method Post `
         -Uri $batchUri `
         -ContentType "multipart/mixed;boundary=$($BatchRequest.BatchBoundary)" `
-        -Body $BatchRequest.BatchBody
+        -Body $BatchRequest.BatchBody `
+        -SkipHttpErrorCheck
 
-    if ($batchResponse.StatusCode -lt 200 -or $batchResponse.StatusCode -ge 300) {
-        throw "$ErrorMessagePrefix returned HTTP status $($batchResponse.StatusCode)."
+    $parsedResponse = ConvertFrom-PSDVBatchResponse -BatchResponse $batchResponse -ExpectedCount $BatchRequest.RequestedCount
+
+    if (($batchResponse.StatusCode -lt 200 -or $batchResponse.StatusCode -ge 300) -and $parsedResponse.StatusCodes.Count -eq 0) {
+        $responseContent = if ($batchResponse.Content -is [byte[]]) {
+            [System.Text.Encoding]::UTF8.GetString($batchResponse.Content)
+        }
+        else {
+            [string]$batchResponse.Content
+        }
+
+        throw "$ErrorMessagePrefix returned HTTP status $($batchResponse.StatusCode). Response content: $responseContent"
     }
 
-    return ConvertFrom-PSDVBatchResponse -BatchResponse $batchResponse -ExpectedCount $BatchRequest.RequestedCount
+    return $parsedResponse
 }
