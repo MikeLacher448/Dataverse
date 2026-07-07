@@ -19,6 +19,7 @@ function Invoke-PSDVBatchRequest {
         -Method Post `
         -Uri $batchUri `
         -ContentType "multipart/mixed;boundary=$($BatchRequest.BatchBoundary)" `
+        -Headers @{ Prefer = 'odata.continue-on-error' } `
         -Body $BatchRequest.BatchBody `
         -SkipHttpErrorCheck
 

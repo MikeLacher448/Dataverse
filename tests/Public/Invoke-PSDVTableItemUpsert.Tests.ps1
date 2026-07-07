@@ -52,7 +52,7 @@ Describe 'Invoke-PSDVTableItemUpsert' {
         Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter { $Method -eq 'Patch' -and $Uri -match "/accounts\(accountnumber='ACC001'\)$" -and $Body -match 'ACC001' }
     }
 
-    It 'adds If-None-Match when CreateOnly is specified' {
+    It 'uses POST with the alternate key in the body when CreateOnly is specified' {
         Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
             if ($Uri -match '/EntityDefinitions\?') {
                 return New-PSDVPublicTestWebResponse -Payload @{ LogicalName = 'account' }
@@ -69,7 +69,7 @@ Describe 'Invoke-PSDVTableItemUpsert' {
 
         Invoke-PSDVTableItemUpsert -EntitySet 'accounts' -AlternateKeyColumnName 'accountnumber' -AlternateKeyValue 'ACC001' -ItemData @{ name = 'Created' } -CreateOnly
 
-        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter { $Method -eq 'Patch' -and $Headers['If-None-Match'] -eq '*' -and $Uri -match "/accounts\(accountnumber='ACC001'\)$" }
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter { $Method -eq 'Post' -and $Uri -match '/accounts$' -and -not $Headers.ContainsKey('If-None-Match') -and $Body -match '"accountnumber"\s*:\s*"ACC001"' -and $Body -match '"name"\s*:\s*"Created"' }
     }
 
     It 'rejects missing alternate key values before making a web request' {

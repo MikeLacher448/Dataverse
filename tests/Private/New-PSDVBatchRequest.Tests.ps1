@@ -43,14 +43,15 @@ Describe 'New-PSDVBatchRequest' {
         }
     }
 
-    It 'adds If-None-Match for create-only upsert batches' {
+    It 'builds POST operations with alternate key values for create-only upsert batches' {
         InModuleScope Dataverse {
             $items = @([pscustomobject]@{ AlternateKeyValue = 'ACC001'; ItemData = @{ name = 'Create only' } })
 
             $request = New-PSDVBatchRequest -EntitySet 'accounts' -Operation Upsert -AlternateKeyColumnName 'accountnumber' -Items $items -CreateOnly
 
-            $request.BatchBody | Should -Match "PATCH accounts\(accountnumber='ACC001'\) HTTP/1.1"
-            $request.BatchBody | Should -Match 'If-None-Match: \*'
+            $request.BatchBody | Should -Match 'POST accounts HTTP/1.1'
+            $request.BatchBody | Should -Match '"accountnumber":"ACC001"'
+            $request.BatchBody | Should -Not -Match 'If-None-Match'
         }
     }
 }

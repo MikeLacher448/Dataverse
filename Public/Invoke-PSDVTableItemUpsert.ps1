@@ -5,7 +5,7 @@ function Invoke-PSDVTableItemUpsert {
 
     .DESCRIPTION
     Invoke-PSDVTableItemUpsert updates an existing record or creates a missing record by sending a PATCH request to a Dataverse alternate-key URI.
-    When CreateOnly is specified, the request includes If-None-Match: * so Dataverse only creates missing records and reports existing records as precondition failures.
+    When CreateOnly is specified, the request uses POST with the alternate key in the request body so Dataverse creates missing records and reports existing records as precondition failures.
 
     .PARAMETER Table
     The logical name of the Dataverse table containing the record to upsert.
@@ -29,7 +29,7 @@ function Invoke-PSDVTableItemUpsert {
     When specified, returns the upserted record with current field values.
 
     .PARAMETER CreateOnly
-    When specified, includes If-None-Match: * so the request only creates missing records.
+    When specified, sends a POST create request with the alternate key in the request body.
     #>
 
     [CmdletBinding(SupportsShouldProcess)]
@@ -104,11 +104,21 @@ function Invoke-PSDVTableItemUpsert {
         $attributeDetails[$key] = $itemDataValidation.AttributeDetails[$key]
     }
 
+    $itemDataForRequest = @{}
+    foreach ($key in $ItemData.Keys) {
+        $itemDataForRequest[$key] = $ItemData[$key]
+    }
+
+    if ($CreateOnly.IsPresent -and -not $itemDataForRequest.ContainsKey($AlternateKeyColumnName)) {
+        $itemDataForRequest[$AlternateKeyColumnName] = $AlternateKeyValue
+        $attributeDetails[$AlternateKeyColumnName] = $itemDataValidation.AttributeDetails[$AlternateKeyColumnName]
+    }
+
     $itemDataToProcess = if ($ParseItemData.IsPresent) {
-        ConvertTo-PSDVLookupItemData -ItemData $ItemData -AttributeDetails $attributeDetails
+        ConvertTo-PSDVLookupItemData -ItemData $itemDataForRequest -AttributeDetails $attributeDetails
     }
     else {
-        $ItemData
+        $itemDataForRequest
     }
 
     $requestHeaders = @{
@@ -119,15 +129,12 @@ function Invoke-PSDVTableItemUpsert {
         $requestHeaders['Prefer'] = 'odata.include-annotations="*",return=representation'
     }
 
-    if ($CreateOnly.IsPresent) {
-        $requestHeaders['If-None-Match'] = '*'
-    }
-
     $alternateKeyLiteral = ConvertTo-PSDVODataStringLiteral -Value ([string]$AlternateKeyValue)
-    $dvRequestUri = "$EntitySet($AlternateKeyColumnName=$alternateKeyLiteral)"
+    $dvRequestUri = if ($CreateOnly.IsPresent) { $EntitySet } else { "$EntitySet($AlternateKeyColumnName=$alternateKeyLiteral)" }
+    $method = if ($CreateOnly.IsPresent) { 'Post' } else { 'Patch' }
     $shouldProcessAction = if ($CreateOnly.IsPresent) { 'Create item by alternate key' } else { 'Upsert item by alternate key' }
 
     if ($PSCmdlet.ShouldProcess($dvRequestUri, $shouldProcessAction)) {
-        return (Invoke-PSDVWebRequest -WebUri $dvRequestUri -Headers $requestHeaders -Body $itemDataToProcess -Method 'Patch')
+        return (Invoke-PSDVWebRequest -WebUri $dvRequestUri -Headers $requestHeaders -Body $itemDataToProcess -Method $method)
     }
 }

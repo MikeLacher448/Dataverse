@@ -45,7 +45,7 @@ Describe 'Invoke-PSDVTableItemUpsertBatch' {
         Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter { $Uri -match '/\$batch$' -and $Method -eq 'Post' -and $Body -match "PATCH accounts\(accountnumber='ACC-001'\) HTTP/1.1" -and $Body -match "PATCH accounts\(accountnumber='O''Hare'\) HTTP/1.1" -and $Body -notmatch 'If-None-Match' }
     }
 
-    It 'adds If-None-Match for create-only upsert batches and categorizes existing records' {
+    It 'uses POST for create-only upsert batches and categorizes existing records' {
         $items = @(@{ AlternateKeyValue = 'ACC-001'; ItemData = @{ name = 'First' } })
 
         Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
@@ -71,7 +71,7 @@ Describe 'Invoke-PSDVTableItemUpsertBatch' {
         $result.AlreadyExistingCount | Should -Be 1
         $result.FailedCount | Should -Be 0
         $result.Results[0].Category | Should -BeExactly 'AlreadyExists'
-        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter { $Uri -match '/\$batch$' -and $Method -eq 'Post' -and $Body -match 'If-None-Match: \*' }
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter { $Uri -match '/\$batch$' -and $Method -eq 'Post' -and $Body -match 'POST accounts HTTP/1.1' -and $Body -match '"accountnumber":"ACC-001"' -and $Body -notmatch 'If-None-Match' }
     }
 
     It 'rejects upsert entries without an alternate key value before submitting the batch' {

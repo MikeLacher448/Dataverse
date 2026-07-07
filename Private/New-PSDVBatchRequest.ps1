@@ -38,16 +38,25 @@ function New-PSDVBatchRequest {
 
     foreach ($item in $Items) {
         $itemData = $item.ItemData
+        $itemDataForRequest = @{}
+        foreach ($key in $itemData.Keys) {
+            $itemDataForRequest[$key] = $itemData[$key]
+        }
+
+        if ($Operation -eq 'Upsert' -and $CreateOnly.IsPresent -and -not $itemDataForRequest.ContainsKey($AlternateKeyColumnName)) {
+            $itemDataForRequest[$AlternateKeyColumnName] = $item.AlternateKeyValue
+        }
+
         $itemDataToProcess = if ($ParseItemData.IsPresent) {
             $itemAttributeDetails = @{}
-            foreach ($key in $itemData.Keys) {
+            foreach ($key in $itemDataForRequest.Keys) {
                 $itemAttributeDetails[$key] = $AttributeDetails[$key]
             }
 
-            ConvertTo-PSDVLookupItemData -ItemData $itemData -AttributeDetails $itemAttributeDetails
+            ConvertTo-PSDVLookupItemData -ItemData $itemDataForRequest -AttributeDetails $itemAttributeDetails
         }
         else {
-            $itemData
+            $itemDataForRequest
         }
 
         switch ($Operation) {
@@ -60,9 +69,15 @@ function New-PSDVBatchRequest {
                 $requestUri = "$EntitySet($($item.ItemID))"
             }
             'Upsert' {
-                $method = 'PATCH'
-                $alternateKeyLiteral = ConvertTo-PSDVODataStringLiteral -Value ([string]$item.AlternateKeyValue)
-                $requestUri = "$EntitySet($AlternateKeyColumnName=$alternateKeyLiteral)"
+                if ($CreateOnly.IsPresent) {
+                    $method = 'POST'
+                    $requestUri = $EntitySet
+                }
+                else {
+                    $method = 'PATCH'
+                    $alternateKeyLiteral = ConvertTo-PSDVODataStringLiteral -Value ([string]$item.AlternateKeyValue)
+                    $requestUri = "$EntitySet($AlternateKeyColumnName=$alternateKeyLiteral)"
+                }
             }
         }
 
@@ -78,10 +93,6 @@ function New-PSDVBatchRequest {
         $bodyLines.Add('')
         $bodyLines.Add("$method $requestUri HTTP/1.1")
         $bodyLines.Add('Content-Type: application/json;type=entry')
-
-        if ($Operation -eq 'Upsert' -and $CreateOnly.IsPresent) {
-            $bodyLines.Add('If-None-Match: *')
-        }
 
         $bodyLines.Add('')
         $bodyLines.Add(($itemDataToProcess | ConvertTo-Json -Compress -Depth 10))
