@@ -6,7 +6,7 @@ A comprehensive PowerShell module for interacting with Microsoft Dataverse envir
 
 - **Multiple Authentication Methods**: Support for Service Principal, Managed Identity, and Interactive authentication
 - **Comprehensive CRUD Operations**: Create, Read, Update, and Delete operations for Dataverse records
-- **Advanced Querying**: OData filters, field selection, record expansion, and automatic pagination
+- **Advanced Querying**: OData filters, field selection, record expansion, automatic pagination, and page-by-page streaming for large queries
 - **Metadata Operations**: Retrieve table and column metadata information
 - **Audit and Change Tracking**: Access audit history and detailed change tracking
 - **Webhook Management**: Register, inspect, update, and remove Dataverse table webhooks
@@ -258,7 +258,7 @@ Access tokens are refreshed automatically by Dataverse operations when they are 
 
 ### Core Operations
 
-- `Invoke-PSDVWebRequest` - Execute authenticated web requests
+- `Invoke-PSDVWebRequest` - Execute authenticated web requests, with optional `-MaxPageSize` and `-AsPages` support for large paged result sets
 - `Get-PSDVTableItem` - Retrieve records from tables
 - `New-PSDVTableItem` - Create new records
 - `Update-PSDVTableItem` - Update existing records
@@ -296,6 +296,21 @@ Get-PSDVTableItem -Table "account" `
                   -Filter "revenue gt 1000000" `
                   -Expand "primarycontactid" `
                   -Select @("name", "revenue", "primarycontactid")
+```
+
+### Large Query Page Streaming
+
+Use `-MaxPageSize` to request a Dataverse OData page size and `-AsPages` to process each page before the next page is requested. Each page object includes `PageNumber`, `Count`, `Results`, and `NextLink`.
+
+```powershell
+Invoke-PSDVWebRequest -WebUri "accounts" -MaxPageSize 1000 -AsPages | ForEach-Object {
+    $page = $_
+
+    foreach ($account in $page.Results) {
+        # Process this page before the next Dataverse page is requested
+        $account.name
+    }
+}
 ```
 
 ### Working with Lookup Fields
@@ -406,6 +421,14 @@ This project is licensed under the terms in [LICENSE](LICENSE).
 This software is provided as-is, without warranty or guaranteed support. If you find a bug, have a question, or want to request an enhancement, open an issue in the GitHub repository with the module version, PowerShell version, and enough detail to reproduce the behavior.
 
 ## Changelog
+
+### Version 1.1.2
+
+- Added alternate-key upsert support with `Invoke-PSDVTableItemUpsert` and optional create-only behavior.
+- Added batch create, update, and upsert commands for Dataverse table records.
+- Added categorized batch results for created, already-existing, and failed outcomes.
+- Added configurable page sizes and page-by-page result streaming for large Dataverse queries.
+- Improved JSON payload serialization depth for Dataverse web requests.
 
 ### Version 1.1.1
 

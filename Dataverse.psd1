@@ -12,7 +12,7 @@
 RootModule = 'Dataverse.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.1.1'
+ModuleVersion = '1.1.2'
 
 # Supported PSEditions
 CompatiblePSEditions = @('Core')
@@ -129,9 +129,9 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
-Dataverse v1.1.1 - OData Bind Validation Bugfix
+Dataverse v1.1.2 - Upserts, Batch Operations, and Large Queries
 
-Fixes item data validation for lookup navigation properties supplied in OData bind format, such as parentcustomerid_account@odata.bind. The validator now accepts valid Dataverse relationship navigation properties while continuing to reject invalid attributes.
+Adds alternate-key upsert support, batch create/update/upsert commands, categorized batch results for calling scripts, deeper JSON payload serialization, and large-query page streaming for Dataverse requests.
 
 For detailed documentation, visit: https://github.com/microsoft/Dataverse
 '@

@@ -1,12 +1,17 @@
 # Dataverse PowerShell Module Release Notes
 
-## Unreleased
+## Version 1.1.2
+
+Release date: 2026-07-07
+
+Version 1.1.2 adds alternate-key upsert, batch operation support, and large-query paging improvements for Dataverse table records.
 
 ### Added
 
 - Added alternate-key upsert support with `Invoke-PSDVTableItemUpsert` and optional `-CreateOnly` behavior for create-only requests.
 - Added batch create, update, and upsert commands: `New-PSDVTableItemBatch`, `Update-PSDVTableItemBatch`, and `Invoke-PSDVTableItemUpsertBatch`.
 - Batch commands now return categorized per-request results for created, already-existing, and failed outcomes.
+- Added `Invoke-PSDVWebRequest -MaxPageSize` and `-AsPages` support for processing large Dataverse query results one page at a time.
 
 ### Changed
 
