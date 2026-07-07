@@ -180,12 +180,14 @@ function Invoke-PSDVWebRequest {
             throw "Failed to parse Dataverse JSON response. Error: $($_.Exception.Message)"
         }
 
-        $allResults = @()
+        $allResults = [System.Collections.Generic.List[object]]::new()
 
         # Handle paging by following @odata.nextLink
         do {
            if ($jsonResponse.value.count -gt 0) {
-                $allResults += $jsonResponse.value
+                foreach ($item in $jsonResponse.value) {
+                    $allResults.Add($item)
+                }
             }
             elseif ($jsonResponse.PSObject.Properties.Name -contains 'Value' -and $jsonResponse.value.count -eq 0) {
                 # empty collection, no results
@@ -212,7 +214,7 @@ function Invoke-PSDVWebRequest {
             }
         } while ($jsonResponse)
 
-        return $allResults
+        return $allResults.ToArray()
     }
 }
 
