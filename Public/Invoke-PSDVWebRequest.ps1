@@ -42,6 +42,19 @@ function Invoke-PSDVWebRequest {
     .PARAMETER AsPages
     Returns one page object at a time instead of combining all paged results into a single collection.
 
+    .PARAMETER AsCollection
+    Always returns an array, even when the query yields zero records. This wraps the output so callers
+    receive a reliable collection (with a .Count of 0 for empty results) without needing the @(...) idiom.
+    Cannot be combined with -AsPages or -ReturnRawResponse.
+
+    .OUTPUTS
+    System.Object[]
+
+    For collection queries, the matched records are written to the pipeline. A collection query that
+    matches zero records produces no pipeline output (an unrolled empty array), so wrap calls in @(...)
+    for a reliable .Count, or use -AsCollection to always receive an array.
+    A single-record GET that returns HTTP 204 (No Content) yields $null.
+
     .EXAMPLE
     Invoke-PSDVWebRequest -WebUri "accounts" -Select "name,accountnumber"
 
@@ -69,6 +82,7 @@ function Invoke-PSDVWebRequest {
     #>
 
     [CmdletBinding()]
+    [OutputType([object[]])]
     param(
         [parameter(Mandatory)]
         [String]
@@ -115,11 +129,23 @@ function Invoke-PSDVWebRequest {
 
         [parameter()]
         [switch]
-        $AsPages = $false
+        $AsPages = $false,
+
+        [parameter()]
+        [switch]
+        $AsCollection = $false
     )
 
     if ($ReturnRawResponse -and $AsPages) {
         throw '-AsPages cannot be used with -ReturnRawResponse because raw responses are not parsed for OData pagination.'
+    }
+
+    if ($AsCollection -and $AsPages) {
+        throw '-AsCollection cannot be used with -AsPages because -AsPages emits page objects rather than a single collection.'
+    }
+
+    if ($AsCollection -and $ReturnRawResponse) {
+        throw '-AsCollection cannot be used with -ReturnRawResponse because raw responses are not parsed for OData pagination.'
     }
 
     Set-PSDVAccessToken
@@ -212,6 +238,13 @@ function Invoke-PSDVWebRequest {
     }
     else {
         if ($null -eq $webResponse -or [string]::IsNullOrWhiteSpace($webResponse.Content)) {
+            # Empty/204 response. Because the URI and headers alone don't reveal whether the caller
+            # intended a single-record GET (legitimately $null on HTTP 204) or a collection query
+            # (which should yield an empty collection), we default to $null and let -AsCollection
+            # callers opt into an always-array result.
+            if ($AsCollection) {
+                return , @()
+            }
             return $null
         }
 
@@ -250,8 +283,9 @@ function Invoke-PSDVWebRequest {
                     }
                 }
                 elseif (-not $AsPages) {
-                    # empty collection, no results
-                    return $null
+                    # Empty collection: fall through so control reaches the final
+                    # 'return $allResults.ToArray()', which is already an empty array.
+                    # This unifies the empty and non-empty collection paths.
                 }
             }
             else {
@@ -278,6 +312,10 @@ function Invoke-PSDVWebRequest {
                 $jsonResponse = $null
             }
         } while ($jsonResponse)
+
+        if ($AsCollection) {
+            return , $allResults.ToArray()
+        }
 
         return $allResults.ToArray()
     }

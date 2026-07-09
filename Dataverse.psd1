@@ -131,7 +131,7 @@ PrivateData = @{
         ReleaseNotes = @'
 Dataverse v1.1.2 - Upserts, Batch Operations, and Large Queries
 
-Adds alternate-key upsert support, batch create/update/upsert commands, categorized batch results for calling scripts, deeper JSON payload serialization, and large-query page streaming for Dataverse requests.
+Adds alternate-key upsert support, batch create/update/upsert commands, categorized batch results for calling scripts, deeper JSON payload serialization, and large-query page streaming for Dataverse requests. Invoke-PSDVWebRequest now returns an empty collection (instead of $null) when a query matches no records, adds an -AsCollection switch that always returns an array, and declares [OutputType([object[]])].
 
 For detailed documentation, visit: https://github.com/microsoft/Dataverse
 '@

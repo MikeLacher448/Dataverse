@@ -95,6 +95,70 @@ Describe 'Invoke-PSDVWebRequest' {
         Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 2 -Exactly -ParameterFilter { $Headers['Prefer'] -eq 'odata.maxpagesize=1000' }
     }
 
+    It 'returns an empty collection when a query matches no records' {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            return New-PSDVPublicTestWebResponse -Payload @{ value = @() }
+        }
+
+        $result = Invoke-PSDVWebRequest -WebUri 'accounts'
+
+        @($result).Count | Should -Be 0
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly
+    }
+
+    It 'returns an empty array for an empty collection when -AsCollection is used' {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            return New-PSDVPublicTestWebResponse -Payload @{ value = @() }
+        }
+
+        $result = Invoke-PSDVWebRequest -WebUri 'accounts' -AsCollection
+
+        $null -eq $result | Should -BeFalse
+        $result -is [array] | Should -BeTrue
+        $result.Count | Should -Be 0
+    }
+
+    It 'returns an array for a populated collection when -AsCollection is used' {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            return New-PSDVPublicTestWebResponse -Payload @{ value = @(@{ name = 'Contoso' }) }
+        }
+
+        $result = Invoke-PSDVWebRequest -WebUri 'accounts' -AsCollection
+
+        $result -is [array] | Should -BeTrue
+        $result.Count | Should -Be 1
+        $result[0].name | Should -BeExactly 'Contoso'
+    }
+
+    It 'returns an empty array for a 204/no-content response when -AsCollection is used' {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            return New-PSDVPublicTestWebResponse -Payload $null
+        }
+
+        $result = Invoke-PSDVWebRequest -WebUri 'accounts' -AsCollection
+
+        $result -is [array] | Should -BeTrue
+        $result.Count | Should -Be 0
+    }
+
+    It 'returns $null for a 204/no-content response without -AsCollection' {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            return New-PSDVPublicTestWebResponse -Payload $null
+        }
+
+        $result = Invoke-PSDVWebRequest -WebUri 'accounts'
+
+        $result | Should -BeNullOrEmpty
+    }
+
+    It 'rejects -AsCollection when combined with -AsPages' {
+        { Invoke-PSDVWebRequest -WebUri 'accounts' -AsCollection -AsPages } | Should -Throw '*-AsCollection cannot be used with -AsPages*'
+    }
+
+    It 'rejects -AsCollection when combined with -ReturnRawResponse' {
+        { Invoke-PSDVWebRequest -WebUri 'accounts' -AsCollection -ReturnRawResponse } | Should -Throw '*-AsCollection cannot be used with -ReturnRawResponse*'
+    }
+
     It 'rejects page output when returning raw responses' {
         { Invoke-PSDVWebRequest -WebUri 'accounts' -ReturnRawResponse -AsPages } | Should -Throw '*-AsPages cannot be used with -ReturnRawResponse*'
     }

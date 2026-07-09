@@ -12,10 +12,13 @@ Version 1.1.2 adds alternate-key upsert, batch operation support, and large-quer
 - Added batch create, update, and upsert commands: `New-PSDVTableItemBatch`, `Update-PSDVTableItemBatch`, and `Invoke-PSDVTableItemUpsertBatch`.
 - Batch commands now return categorized per-request results for created, already-existing, and failed outcomes.
 - Added `Invoke-PSDVWebRequest -MaxPageSize` and `-AsPages` support for processing large Dataverse query results one page at a time.
+- Added `Invoke-PSDVWebRequest -AsCollection` to always return an array (including an empty array for zero results), so callers do not need to remember the `@(...)` idiom. `-AsCollection` cannot be combined with `-AsPages` or `-ReturnRawResponse`.
+- Declared `[OutputType([object[]])]` on `Invoke-PSDVWebRequest` and documented the output behavior, including that a single-record GET returning HTTP 204 (No Content) still yields `$null`.
 
 ### Changed
 
 - Dataverse request bodies now support deeper JSON payloads when serialized for web requests.
+- `Invoke-PSDVWebRequest` now returns an empty collection instead of `$null` when a collection query matches zero records, so wrapping calls in `@(...)` reliably reports a `.Count` of `0`. The empty and non-empty collection paths now share a single code path.
 
 ## Version 1.1.1
 
