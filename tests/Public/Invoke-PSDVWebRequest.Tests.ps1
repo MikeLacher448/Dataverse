@@ -172,4 +172,158 @@ Describe 'Invoke-PSDVWebRequest' {
 
         $result.StatusCode | Should -Be 204
     }
+
+    It 'returns the unchanged raw HTTP <StatusCode> response when HTTP error checks are skipped' -ForEach @(
+        @{ StatusCode = 412; Content = '{"error":{"message":"Precondition Failed"}}' }
+        @{ StatusCode = 404; Content = '{"error":{"message":"Not Found"}}' }
+        @{ StatusCode = 500; Content = '<html>Internal Server Error</html>' }
+    ) {
+        $expectedResponse = [PSCustomObject]@{
+            StatusCode = $StatusCode
+            Headers    = @{ 'x-ms-service-request-id' = 'request-123'; ETag = 'W/"123"' }
+            Content    = $Content
+        }
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            if (-not $SkipHttpErrorCheck) {
+                throw "HTTP $StatusCode"
+            }
+            return $expectedResponse
+        }
+
+        $result = Invoke-PSDVWebRequest -WebUri 'accounts(account-id)' -Method Patch `
+            -Headers @{ 'If-Match' = 'W/"122"' } -Body @{ description = 'Updated description' } `
+            -ReturnRawResponse -SkipHttpErrorCheck
+
+        [object]::ReferenceEquals($result, $expectedResponse) | Should -BeTrue
+        $result.StatusCode | Should -Be $StatusCode
+        $result.Headers['x-ms-service-request-id'] | Should -BeExactly 'request-123'
+        $result.Headers.ETag | Should -BeExactly 'W/"123"'
+        $result.Content | Should -BeExactly $Content
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter {
+            $SkipHttpErrorCheck -and $Method -eq 'Patch' -and
+            $Headers['If-Match'] -eq 'W/"122"' -and
+            ($Body | ConvertFrom-Json).description -eq 'Updated description'
+        }
+    }
+
+    It 'still throws HTTP errors with <Mode> and raw output <Raw>' -ForEach @(
+        @{ Mode = 'omitted switch'; Options = @{}; Raw = $false }
+        @{ Mode = 'omitted switch'; Options = @{}; Raw = $true }
+        @{ Mode = 'explicit false'; Options = @{ SkipHttpErrorCheck = $false }; Raw = $false }
+        @{ Mode = 'explicit false'; Options = @{ SkipHttpErrorCheck = $false }; Raw = $true }
+    ) {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            if (-not $SkipHttpErrorCheck) {
+                throw 'HTTP 412 Precondition Failed'
+            }
+            return [PSCustomObject]@{ StatusCode = 412; Content = '{"error":{}}' }
+        }
+
+        { Invoke-PSDVWebRequest -WebUri 'accounts' -ReturnRawResponse:$Raw @Options } |
+            Should -Throw '*Error executing web query:*HTTP 412 Precondition Failed*'
+
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter {
+            -not $SkipHttpErrorCheck
+        }
+    }
+
+    It 'still throws transport errors when HTTP checks are skipped and raw output is <Raw>' -ForEach @(
+        @{ Raw = $false }
+        @{ Raw = $true }
+    ) {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            throw [System.Net.Http.HttpRequestException]::new('Connection failed')
+        }
+
+        { Invoke-PSDVWebRequest -WebUri 'accounts' -SkipHttpErrorCheck -ReturnRawResponse:$Raw } |
+            Should -Throw '*Error executing web query:*Connection failed*'
+
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter {
+            $SkipHttpErrorCheck
+        }
+    }
+
+    It 'parses JSON error content when HTTP checks are skipped without raw output' {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            if (-not $SkipHttpErrorCheck) {
+                throw 'HTTP 412 Precondition Failed'
+            }
+            return [PSCustomObject]@{
+                StatusCode = 412
+                Content    = '{"error":{"code":"ConcurrencyVersionMismatch","message":"Precondition Failed"}}'
+            }
+        }
+
+        $result = Invoke-PSDVWebRequest -WebUri 'accounts' -SkipHttpErrorCheck
+
+        $result.error.code | Should -BeExactly 'ConcurrencyVersionMismatch'
+        $result.error.message | Should -BeExactly 'Precondition Failed'
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter {
+            $SkipHttpErrorCheck
+        }
+    }
+
+    It 'still throws for invalid JSON without raw output when HTTP checks are skipped' {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            return [PSCustomObject]@{ StatusCode = 500; Content = '<html>Internal Server Error</html>' }
+        }
+
+        { Invoke-PSDVWebRequest -WebUri 'accounts' -SkipHttpErrorCheck } |
+            Should -Throw '*Failed to parse Dataverse JSON response*'
+    }
+
+    It 'forwards <Mode> on every request with page output <Pages>' -ForEach @(
+        @{ Mode = 'true'; Options = @{ SkipHttpErrorCheck = $true }; ExpectedSkip = $true; Pages = $false }
+        @{ Mode = 'true'; Options = @{ SkipHttpErrorCheck = $true }; ExpectedSkip = $true; Pages = $true }
+        @{ Mode = 'omitted'; Options = @{}; ExpectedSkip = $false; Pages = $false }
+        @{ Mode = 'omitted'; Options = @{}; ExpectedSkip = $false; Pages = $true }
+        @{ Mode = 'false'; Options = @{ SkipHttpErrorCheck = $false }; ExpectedSkip = $false; Pages = $false }
+        @{ Mode = 'false'; Options = @{ SkipHttpErrorCheck = $false }; ExpectedSkip = $false; Pages = $true }
+    ) {
+        $nextLink = 'https://example.crm.dynamics.com/api/data/v9.2/accounts?$skiptoken=next'
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            if ($Uri -eq $nextLink) {
+                return New-PSDVPublicTestWebResponse -Payload @{ value = @(@{ name = 'Second' }) }
+            }
+            return New-PSDVPublicTestWebResponse -Payload @{
+                value = @(@{ name = 'First' }); '@odata.nextLink' = $nextLink
+            }
+        }
+
+        $result = @(Invoke-PSDVWebRequest -WebUri 'accounts' -AsPages:$Pages @Options)
+
+        $result.Count | Should -Be 2
+        if ($Pages) {
+            $result[0].Results.name | Should -BeExactly 'First'
+            $result[1].Results.name | Should -BeExactly 'Second'
+        }
+        else {
+            $result.name | Should -Be @('First', 'Second')
+        }
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 2 -Exactly -ParameterFilter {
+            [bool]$SkipHttpErrorCheck -eq $ExpectedSkip
+        }
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly -ParameterFilter {
+            $Uri -eq $nextLink -and $Method -eq 'Get' -and [bool]$SkipHttpErrorCheck -eq $ExpectedSkip
+        }
+    }
+
+    It 'preserves pagination transport errors when HTTP checks are skipped' {
+        $nextLink = 'https://example.crm.dynamics.com/api/data/v9.2/accounts?$skiptoken=next'
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            if ($Uri -eq $nextLink) {
+                throw [System.Net.Http.HttpRequestException]::new('Connection failed')
+            }
+            return New-PSDVPublicTestWebResponse -Payload @{
+                value = @(@{ name = 'First' }); '@odata.nextLink' = $nextLink
+            }
+        }
+
+        { Invoke-PSDVWebRequest -WebUri 'accounts' -SkipHttpErrorCheck } |
+            Should -Throw '*Pagination failed after retrieving 1 record(s).*Connection failed*'
+
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 2 -Exactly -ParameterFilter {
+            $SkipHttpErrorCheck
+        }
+    }
 }

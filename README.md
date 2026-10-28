@@ -258,7 +258,7 @@ Access tokens are refreshed automatically by Dataverse operations when they are 
 
 ### Core Operations
 
-- `Invoke-PSDVWebRequest` - Execute authenticated web requests, with optional `-MaxPageSize` and `-AsPages` support for large paged result sets
+- `Invoke-PSDVWebRequest` - Execute authenticated web requests, with optional `-MaxPageSize` and `-AsPages` support for large paged result sets, and `-SkipHttpErrorCheck` to inspect HTTP error responses
 - `Get-PSDVTableItem` - Retrieve records from tables
 - `New-PSDVTableItem` - Create new records
 - `Update-PSDVTableItem` - Update existing records
@@ -312,6 +312,31 @@ Invoke-PSDVWebRequest -WebUri "accounts" -MaxPageSize 1000 -AsPages | ForEach-Ob
     }
 }
 ```
+
+### Handling Expected HTTP Errors
+
+HTTP errors throw by default. Use `-SkipHttpErrorCheck -ReturnRawResponse` to inspect a non-success response's `StatusCode`, `Headers`, and unchanged body in `Content`. For example, a conditional PATCH can return HTTP 412 when another process has changed the record:
+
+```powershell
+$response = Invoke-PSDVWebRequest `
+    -WebUri "accounts($accountId)" `
+    -Method Patch `
+    -Headers @{ 'If-Match' = $etag } `
+    -Body @{ description = 'Updated description' } `
+    -ReturnRawResponse `
+    -SkipHttpErrorCheck
+
+if ($response.StatusCode -eq 412) {
+    Write-Warning 'Another process changed the row; skip or reconcile.'
+}
+elseif ($response.StatusCode -ge 400) {
+    throw "Dataverse returned HTTP $($response.StatusCode): $($response.Content)"
+}
+```
+
+The switch only skips HTTP-status error checks; transport failures (such as connection failures or timeouts) still throw. Omitting the switch or passing `-SkipHttpErrorCheck:$false` preserves the default behavior.
+
+`-SkipHttpErrorCheck` can also be used without `-ReturnRawResponse`. Normal JSON parsing, collection, and page-output rules still apply, including parsing errors for non-JSON bodies. It is forwarded on both the initial request and subsequent pagination requests.
 
 ### Working with Lookup Fields
 

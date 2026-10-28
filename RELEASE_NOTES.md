@@ -1,5 +1,11 @@
 # Dataverse PowerShell Module Release Notes
 
+## Unreleased
+
+### Added
+
+- Added optional `Invoke-PSDVWebRequest -SkipHttpErrorCheck`, forwarded on initial and pagination requests. Combine it with `-ReturnRawResponse` to inspect non-success HTTP status codes, headers, and bodies, including HTTP 412 for conditional PATCH requests. Existing HTTP-error behavior is unchanged when omitted or false, and transport failures still throw. Without raw output, existing JSON parsing and response-mode rules still apply.
+
 ## Version 1.1.2
 
 Release date: 2026-07-07

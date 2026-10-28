@@ -39,6 +39,11 @@ function Invoke-PSDVWebRequest {
     .PARAMETER ReturnRawResponse
     Returns the raw web response object instead of parsing the JSON content.
 
+    .PARAMETER SkipHttpErrorCheck
+    Forwards HTTP error responses to the normal response handling instead of throwing for non-success
+    status codes. Combine with -ReturnRawResponse to inspect StatusCode, Headers, and Content without
+    JSON parsing. Transport failures still throw. When omitted or false, HTTP errors still throw.
+
     .PARAMETER AsPages
     Returns one page object at a time instead of combining all paged results into a single collection.
 
@@ -79,6 +84,16 @@ function Invoke-PSDVWebRequest {
     Invoke-PSDVWebRequest -WebUri "accounts" -Method Post -Body $data
 
     Creates a new account record.
+
+    .EXAMPLE
+    $response = Invoke-PSDVWebRequest -WebUri "accounts($accountId)" -Method Patch `
+        -Headers @{ 'If-Match' = $etag } -Body @{ description = 'Updated description' } `
+        -ReturnRawResponse -SkipHttpErrorCheck
+    if ($response.StatusCode -eq 412) {
+        Write-Warning 'Another process changed the row; skip or reconcile.'
+    }
+
+    Returns the raw response so an expected concurrency conflict can be detected by status code.
     #>
 
     [CmdletBinding()]
@@ -133,7 +148,11 @@ function Invoke-PSDVWebRequest {
 
         [parameter()]
         [switch]
-        $AsCollection = $false
+        $AsCollection = $false,
+
+        [parameter()]
+        [switch]
+        $SkipHttpErrorCheck = $false
     )
 
     if ($ReturnRawResponse -and $AsPages) {
@@ -225,7 +244,7 @@ function Invoke-PSDVWebRequest {
 
     try {
         Write-Verbose "Executing Web API: $($dvRequestUri.Uri.AbsoluteUri)"
-        $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method $method -Uri $dvRequestUri.Uri.AbsoluteUri -Body $bodyContent -Headers $httpHeaders
+        $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method $method -Uri $dvRequestUri.Uri.AbsoluteUri -Body $bodyContent -Headers $httpHeaders -SkipHttpErrorCheck:$SkipHttpErrorCheck
     }
      catch {
          $errorMessage = $_ | Out-String
@@ -301,7 +320,7 @@ function Invoke-PSDVWebRequest {
             if ($jsonResponse.'@odata.nextLink') {
                 try {
                     Write-Verbose "Following pagination link: $($jsonResponse.'@odata.nextLink')"
-                    $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method Get -Uri $jsonResponse.'@odata.nextLink' -Headers $httpHeaders
+                    $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method Get -Uri $jsonResponse.'@odata.nextLink' -Headers $httpHeaders -SkipHttpErrorCheck:$SkipHttpErrorCheck
                     $jsonResponse = $webResponse.Content | ConvertFrom-Json -ErrorAction Stop
                 }
                 catch {
@@ -320,4 +339,3 @@ function Invoke-PSDVWebRequest {
         return $allResults.ToArray()
     }
 }
-
