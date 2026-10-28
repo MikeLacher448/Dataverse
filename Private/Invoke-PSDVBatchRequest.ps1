@@ -2,10 +2,17 @@ function Invoke-PSDVBatchRequest {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [ValidateScript({
+            $count = $_.RequestedCount -as [int]
+            $_.BatchBoundary -is [string] -and $_.BatchBoundary -match '\S' -and $_.BatchBoundary -notmatch '[\r\n]' -and
+                $_.BatchBody -is [string] -and $_.BatchBody -match '\S' -and
+                $null -ne $count -and $count -ge 0 -and $_.RequestedCount -eq $count
+        }, ErrorMessage = 'BatchRequest requires a nonblank boundary and body and a nonnegative integer RequestedCount.')]
         [pscustomobject]
         $BatchRequest,
 
         [Parameter()]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $ErrorMessagePrefix = 'Dataverse batch request'
     )

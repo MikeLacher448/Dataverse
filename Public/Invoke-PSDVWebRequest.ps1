@@ -10,7 +10,7 @@ function Invoke-PSDVWebRequest {
     properties to retrieve complete result sets for large datasets.
 
     .PARAMETER WebUri
-    The Web API endpoint URI. Can be a full URL, relative path with 'api/data/v9.2/', or just the resource name.
+    The nonblank Web API endpoint URI. Can be a full URL, relative path with 'api/data/v9.2/', or just the resource name.
 
     .PARAMETER Method
     The HTTP method to use. Valid values are Get, Post, Patch, Delete, or Put. Default is Get.
@@ -61,6 +61,8 @@ function Invoke-PSDVWebRequest {
     A single-record GET that returns HTTP 204 (No Content) yields $null.
 
     .NOTES
+    Required identifiers and numeric/enumerated inputs are validated by PowerShell before requests.
+    Optional empty query values and empty Body/Headers dictionaries retain their existing handling.
     HTTP failures terminate with error ID prefix PSDVPreconditionFailed for status 412, or PSDVHttpError
     for other statuses. $_.Exception.Data['PSDVHttpError'] contains HttpStatusCode (integer),
     DataverseErrorCode and DataverseErrorMessage (strings or null), ResponseHeaders (case-insensitive
@@ -111,6 +113,7 @@ function Invoke-PSDVWebRequest {
     [OutputType([object[]])]
     param(
         [parameter(Mandatory)]
+        [ValidateNotNullOrWhiteSpace()]
         [String]
         $WebUri,
 

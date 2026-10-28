@@ -34,7 +34,8 @@ Describe 'Update-PSDVTableItem' {
     It 'rejects an empty item ID before making a web request' {
         Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith { throw 'should not be called' }
 
-        { Update-PSDVTableItem -EntitySet 'accounts' -ItemID ([Guid]::Empty) -ItemData @{ name = 'Updated' } } | Should -Throw 'ItemID cannot be an empty GUID'
+        { Update-PSDVTableItem -EntitySet 'accounts' -ItemID ([Guid]::Empty) -ItemData @{ name = 'Updated' } } |
+            Should -Throw -ErrorId 'ParameterArgumentValidationError*'
         Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 0 -Exactly
     }
 

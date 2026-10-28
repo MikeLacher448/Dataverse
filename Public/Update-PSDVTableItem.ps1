@@ -17,7 +17,7 @@ function Update-PSDVTableItem {
     The entity set name of the Dataverse table (alternative to Table parameter).
 
     .PARAMETER ItemID
-    The unique identifier (GUID) of the record to update.
+    The non-empty GUID of the record to update. The zero GUID is rejected at parameter binding.
 
     .PARAMETER ItemData
     Hashtable containing the field names and values to update in the record.
@@ -85,14 +85,17 @@ function Update-PSDVTableItem {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [parameter(Mandatory, ParameterSetName = 'TableLogicalName')]
+        [ValidateNotNullOrWhiteSpace()]
         [String]
         $Table,
 
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetName')]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $EntitySet,
 
         [parameter(Mandatory)]
+        [ValidateScript({ $_ -ne [guid]::Empty }, ErrorMessage = 'ItemID cannot be an empty GUID.')]
         [System.Guid]
         $ItemID,
 
@@ -109,18 +112,13 @@ function Update-PSDVTableItem {
         $ReturnItem,
 
         [parameter()]
-        [ValidateNotNullOrEmpty()]
-        [ValidateScript({ -not [string]::IsNullOrWhiteSpace($_) })]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $IfMatch
     )
 
     if ($null -eq $Global:DATAVERSEACCESSTOKEN) {
         throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
-    }
-
-    if ($ItemID -eq [Guid]::Empty) {
-        throw 'ItemID cannot be an empty GUID'
     }
 
     #lookup table relationships require setting the Microsoft.Dynamics.CRM.associatednavigationproperty odata.bind = /entitysetname(item ID)

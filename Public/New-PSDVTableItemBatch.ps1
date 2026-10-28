@@ -7,10 +7,12 @@ function New-PSDVTableItemBatch {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [parameter(Mandatory, ParameterSetName = 'TableLogicalName')]
+        [ValidateNotNullOrWhiteSpace()]
         [String]
         $Table,
 
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetName')]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $EntitySet,
 
@@ -31,10 +33,6 @@ function New-PSDVTableItemBatch {
     $itemsToProcess = @($Items | Where-Object { $null -ne $_ })
     if ($itemsToProcess.Count -eq 0) {
         return (ConvertFrom-PSDVBatchResponse -BatchResponse $null -ExpectedCount 0)
-    }
-
-    if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
-        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
     }
 
     $resolvedItems = [System.Collections.Generic.List[object]]::new()
@@ -60,6 +58,10 @@ function New-PSDVTableItemBatch {
         }
 
         $resolvedItems.Add([pscustomobject]@{ ItemData = $itemData })
+    }
+
+    if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
+        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
     }
 
     $itemDataValidation = Confirm-PSDVItemDataAttributes -Table $Table -EntitySet $EntitySet -ItemData $combinedItemData

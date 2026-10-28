@@ -12,7 +12,7 @@
 RootModule = 'Dataverse.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.1.2'
+ModuleVersion = '1.2.0'
 
 # Supported PSEditions
 CompatiblePSEditions = @('Core')
@@ -33,7 +33,7 @@ Copyright = '(c) Microsoft Corporation. All rights reserved.'
 Description = 'PowerShell module for interacting with Microsoft Dataverse environments. Provides comprehensive functionality for connecting to Dataverse, managing authentication, and performing CRUD operations on tables and records.'
 
 # Minimum version of the PowerShell engine required by this module
-PowerShellVersion = '7.3'
+PowerShellVersion = '7.6'
 
 # Name of the PowerShell host required by this module
 # PowerShellHostName = ''
@@ -129,9 +129,11 @@ PrivateData = @{
 
         # ReleaseNotes of this module
         ReleaseNotes = @'
-Dataverse v1.1.2 - Upserts, Batch Operations, and Large Queries
+Dataverse v1.2.0 - Upserts, Batches, Optimistic Concurrency, and Input Validation
 
-Adds alternate-key upsert support, batch create/update/upsert commands, categorized batch results for calling scripts, deeper JSON payload serialization, and large-query page streaming for Dataverse requests. Invoke-PSDVWebRequest now returns an empty collection (instead of $null) when a query matches no records, adds an -AsCollection switch that always returns an array, and declares [OutputType([object[]])].
+Requires PowerShell 7.6 or later. Version 1.1.1 is the latest release that supports PowerShell 7.3-7.5.
+
+Adds alternate-key upsert support, batch create/update/upsert commands, categorized batch results, deeper JSON payload serialization, and large-query page streaming. Invoke-PSDVWebRequest returns an empty collection (instead of $null) when a query matches no records, adds -AsCollection and -SkipHttpErrorCheck, and exposes structured HTTP errors (PSDVPreconditionFailed, PSDVHttpError, PSDVWebRequestFailed). Update-PSDVTableItem adds -IfMatch for ETag-conditional updates. Parameter validation now uses native PowerShell attributes across all public and private functions.
 
 For detailed documentation, visit: https://github.com/microsoft/Dataverse
 '@

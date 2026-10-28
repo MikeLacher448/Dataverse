@@ -7,14 +7,17 @@ function Invoke-PSDVTableItemUpsertBatch {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [parameter(Mandatory, ParameterSetName = 'TableLogicalName')]
+        [ValidateNotNullOrWhiteSpace()]
         [String]
         $Table,
 
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetName')]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $EntitySet,
 
         [parameter(Mandatory)]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $AlternateKeyColumnName,
 
@@ -36,17 +39,9 @@ function Invoke-PSDVTableItemUpsertBatch {
         throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
     }
 
-    if ([string]::IsNullOrWhiteSpace($AlternateKeyColumnName)) {
-        throw 'AlternateKeyColumnName cannot be empty.'
-    }
-
     $itemsToProcess = @($Items | Where-Object { $null -ne $_ })
     if ($itemsToProcess.Count -eq 0) {
         return (ConvertFrom-PSDVBatchResponse -BatchResponse $null -ExpectedCount 0)
-    }
-
-    if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
-        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
     }
 
     $resolvedItems = [System.Collections.Generic.List[object]]::new()
@@ -73,7 +68,7 @@ function Invoke-PSDVTableItemUpsertBatch {
             $alternateKeyValue = $itemData[$AlternateKeyColumnName]
         }
 
-        if ($null -eq $alternateKeyValue -or [string]::IsNullOrWhiteSpace([string]$alternateKeyValue)) {
+        if ($null -eq $alternateKeyValue -or [string]$alternateKeyValue -notmatch '\S') {
             throw 'Each batch upsert entry must include an AlternateKeyValue or an ItemData value for AlternateKeyColumnName.'
         }
 
@@ -91,6 +86,10 @@ function Invoke-PSDVTableItemUpsertBatch {
             AlternateKeyValue = $alternateKeyValue
             ItemData          = $itemData
         })
+    }
+
+    if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
+        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
     }
 
     $itemDataValidation = Confirm-PSDVItemDataAttributes -Table $Table -EntitySet $EntitySet -ItemData $combinedItemData

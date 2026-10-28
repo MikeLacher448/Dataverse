@@ -2,6 +2,7 @@ function Get-PSDVEntitySetFromLogicalName {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [ValidateNotNullOrWhiteSpace()]
         [String]
         $Table
     )

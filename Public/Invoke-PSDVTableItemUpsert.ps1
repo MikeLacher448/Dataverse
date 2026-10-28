@@ -35,14 +35,17 @@ function Invoke-PSDVTableItemUpsert {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [parameter(Mandatory, ParameterSetName = 'TableLogicalName')]
+        [ValidateNotNullOrWhiteSpace()]
         [String]
         $Table,
 
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetName')]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $EntitySet,
 
         [parameter(Mandatory)]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $AlternateKeyColumnName,
 
@@ -71,15 +74,11 @@ function Invoke-PSDVTableItemUpsert {
         throw 'No existing connection to Dataverse Environment, run Connect-PSDVOrg before executing other PSDV cmdlets'
     }
 
-    if ([string]::IsNullOrWhiteSpace($AlternateKeyColumnName)) {
-        throw 'AlternateKeyColumnName cannot be empty.'
-    }
-
     if ($null -eq $AlternateKeyValue -and $ItemData.ContainsKey($AlternateKeyColumnName)) {
         $AlternateKeyValue = $ItemData[$AlternateKeyColumnName]
     }
 
-    if ($null -eq $AlternateKeyValue -or [string]::IsNullOrWhiteSpace([string]$AlternateKeyValue)) {
+    if ($null -eq $AlternateKeyValue -or [string]$AlternateKeyValue -notmatch '\S') {
         throw 'AlternateKeyValue is required when ItemData does not include AlternateKeyColumnName.'
     }
 

@@ -7,10 +7,12 @@ function Update-PSDVTableItemBatch {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [parameter(Mandatory, ParameterSetName = 'TableLogicalName')]
+        [ValidateNotNullOrWhiteSpace()]
         [String]
         $Table,
 
         [parameter(Mandatory, ParameterSetName = 'TableEntitySetName')]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $EntitySet,
 
@@ -33,10 +35,6 @@ function Update-PSDVTableItemBatch {
         return (ConvertFrom-PSDVBatchResponse -BatchResponse $null -ExpectedCount 0)
     }
 
-    if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
-        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
-    }
-
     $resolvedUpdates = [System.Collections.Generic.List[object]]::new()
     $combinedItemData = @{}
 
@@ -57,7 +55,10 @@ function Update-PSDVTableItemBatch {
             throw 'Each batch update entry must include an ItemID.'
         }
 
-        $itemId = [System.Guid]$itemIdValue
+        $itemId = $itemIdValue -as [guid]
+        if ($null -eq $itemId) {
+            throw 'Each batch update entry must include a valid ItemID GUID.'
+        }
         if ($itemId -eq [Guid]::Empty) {
             throw 'ItemID cannot be an empty GUID'
         }
@@ -76,6 +77,10 @@ function Update-PSDVTableItemBatch {
             ItemID   = $itemId
             ItemData = $itemData
         })
+    }
+
+    if (($PSCmdlet.ParameterSetName).StartsWith('TableLogicalName')) {
+        $EntitySet = Get-PSDVEntitySetFromLogicalName -Table $Table
     }
 
     $itemDataValidation = Confirm-PSDVItemDataAttributes -Table $Table -EntitySet $EntitySet -ItemData $combinedItemData

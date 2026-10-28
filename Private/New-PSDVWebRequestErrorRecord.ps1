@@ -7,6 +7,7 @@ function New-PSDVWebRequestErrorRecord {
         $OriginalError,
 
         [Parameter(Mandatory)]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $Method,
 
@@ -15,6 +16,7 @@ function New-PSDVWebRequestErrorRecord {
         $RequestUri,
 
         [Parameter(Mandatory)]
+        [ValidateNotNullOrWhiteSpace()]
         [string]
         $MessagePrefix
     )
