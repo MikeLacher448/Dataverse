@@ -139,7 +139,7 @@ For detailed documentation, visit: https://github.com/microsoft/Dataverse
 '@
 
         # Prerelease string of this module
-        # Prerelease = ''
+        Prerelease = '1.2.0-preview1'
 
         # Flag to indicate whether the module requires explicit user acceptance for install/update/save
         RequireLicenseAcceptance = $false
