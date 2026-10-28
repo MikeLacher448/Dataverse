@@ -14,6 +14,7 @@ $privateFunctions = @(
     'ConvertTo-PSDVODataStringLiteral',
     'ConvertTo-PSDVXmlAttributeValue',
     'Join-PSDVQueryString',
+    'New-PSDVWebRequestErrorRecord',
     'ConvertFrom-PSDVBatchResponse',
     'New-PSDVBatchRequest',
     'Invoke-PSDVBatchRequest',

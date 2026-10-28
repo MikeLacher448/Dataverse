@@ -60,6 +60,17 @@ function Invoke-PSDVWebRequest {
     for a reliable .Count, or use -AsCollection to always receive an array.
     A single-record GET that returns HTTP 204 (No Content) yields $null.
 
+    .NOTES
+    HTTP failures terminate with error ID prefix PSDVPreconditionFailed for status 412, or PSDVHttpError
+    for other statuses. $_.Exception.Data['PSDVHttpError'] contains HttpStatusCode (integer),
+    DataverseErrorCode and DataverseErrorMessage (strings or null), ResponseHeaders (case-insensitive
+    dictionary of string arrays), ResponseBody, Method, and RequestUri. The original native exception
+    is retained as $_.Exception.InnerException. Request/transport failures without a received HTTP
+    response use PSDVWebRequestFailed and do not have PSDVHttpError data. JSON parsing errors remain
+    distinct. Match error ID prefixes because PowerShell may append command context.
+    -SkipHttpErrorCheck retains normal response handling instead of creating HTTP error records.
+    The module does not automatically retry requests; an uncertain write outcome requires caller reconciliation.
+
     .EXAMPLE
     Invoke-PSDVWebRequest -WebUri "accounts" -Select "name,accountnumber"
 
@@ -246,10 +257,10 @@ function Invoke-PSDVWebRequest {
         Write-Verbose "Executing Web API: $($dvRequestUri.Uri.AbsoluteUri)"
         $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method $method -Uri $dvRequestUri.Uri.AbsoluteUri -Body $bodyContent -Headers $httpHeaders -SkipHttpErrorCheck:$SkipHttpErrorCheck
     }
-     catch {
-         $errorMessage = $_ | Out-String
-      
-         throw "Error executing web query: $errorMessage"
+    catch {
+        $requestError = New-PSDVWebRequestErrorRecord -OriginalError $_ -Method $Method `
+            -RequestUri $dvRequestUri.Uri.AbsoluteUri -MessagePrefix 'Error executing web query:'
+        $PSCmdlet.ThrowTerminatingError($requestError)
     }
 
     if ($ReturnRawResponse) {
@@ -318,9 +329,17 @@ function Invoke-PSDVWebRequest {
 
             # Check if there's a next page
             if ($jsonResponse.'@odata.nextLink') {
+                $nextPageUri = $jsonResponse.'@odata.nextLink'
                 try {
-                    Write-Verbose "Following pagination link: $($jsonResponse.'@odata.nextLink')"
-                    $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method Get -Uri $jsonResponse.'@odata.nextLink' -Headers $httpHeaders -SkipHttpErrorCheck:$SkipHttpErrorCheck
+                    Write-Verbose "Following pagination link: $nextPageUri"
+                    $webResponse = Invoke-WebRequest -Authentication OAuth -Token $Global:DATAVERSEACCESSTOKEN.Token -Method Get -Uri $nextPageUri -Headers $httpHeaders -SkipHttpErrorCheck:$SkipHttpErrorCheck
+                }
+                catch {
+                    $requestError = New-PSDVWebRequestErrorRecord -OriginalError $_ -Method Get `
+                        -RequestUri $nextPageUri -MessagePrefix "Pagination failed after retrieving $retrievedCount record(s). Error retrieving next page:"
+                    $PSCmdlet.ThrowTerminatingError($requestError)
+                }
+                try {
                     $jsonResponse = $webResponse.Content | ConvertFrom-Json -ErrorAction Stop
                 }
                 catch {

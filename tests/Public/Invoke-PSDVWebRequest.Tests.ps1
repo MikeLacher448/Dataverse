@@ -326,4 +326,96 @@ Describe 'Invoke-PSDVWebRequest' {
             $SkipHttpErrorCheck
         }
     }
+
+    It 'exposes structured HTTP <StatusCode> errors to callers with raw output <Raw>' -ForEach @(
+        @{ StatusCode = 412; Raw = $false; ErrorId = 'PSDVPreconditionFailed' }
+        @{ StatusCode = 412; Raw = $true; ErrorId = 'PSDVPreconditionFailed' }
+        @{ StatusCode = 401; Raw = $false; ErrorId = 'PSDVHttpError' }
+        @{ StatusCode = 403; Raw = $false; ErrorId = 'PSDVHttpError' }
+        @{ StatusCode = 404; Raw = $false; ErrorId = 'PSDVHttpError' }
+        @{ StatusCode = 429; Raw = $false; ErrorId = 'PSDVHttpError' }
+        @{ StatusCode = 500; Raw = $false; ErrorId = 'PSDVHttpError' }
+    ) {
+        $original = New-PSDVTestHttpErrorRecord -StatusCode $StatusCode
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith { throw $original }
+        $caught = $null
+        try {
+            Invoke-PSDVWebRequest -WebUri 'accounts' -Method Patch -ReturnRawResponse:$Raw -ErrorAction Stop
+        }
+        catch {
+            $caught = $_
+        }
+        finally {
+            $original.Exception.Response.Dispose()
+        }
+
+        $caught | Should -Not -BeNullOrEmpty
+        $caught.FullyQualifiedErrorId | Should -BeLike "$ErrorId*"
+        $caught.Exception.Data['PSDVHttpError'].HttpStatusCode | Should -Be $StatusCode
+        $caught.Exception.Data['PSDVHttpError'].DataverseErrorCode | Should -BeExactly '0x80060882'
+        [object]::ReferenceEquals($caught.Exception.InnerException, $original.Exception) | Should -BeTrue
+        Should -Invoke -CommandName Invoke-WebRequest -ModuleName Dataverse -Times 1 -Exactly
+    }
+
+    It 'exposes HTTP details and pagination context when a later page fails' {
+        $nextLink = 'https://example.crm.dynamics.com/api/data/v9.2/accounts?$skiptoken=next'
+        $original = New-PSDVTestHttpErrorRecord -StatusCode 429
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            if ($Uri -eq $nextLink) { throw $original }
+            return New-PSDVPublicTestWebResponse -Payload @{
+                value = @(@{ name = 'First' }); '@odata.nextLink' = $nextLink
+            }
+        }
+        $caught = $null
+        try {
+            Invoke-PSDVWebRequest -WebUri 'accounts' -ErrorAction Stop
+        }
+        catch {
+            $caught = $_
+        }
+        finally {
+            $original.Exception.Response.Dispose()
+        }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'PSDVHttpError*'
+        $caught.Exception.Message | Should -BeLike '*Pagination failed after retrieving 1 record(s).*'
+        $details = $caught.Exception.Data['PSDVHttpError']
+        $details.HttpStatusCode | Should -Be 429
+        $details.Method | Should -BeExactly 'Get'
+        $details.RequestUri | Should -BeExactly $nextLink
+        $details.ResponseHeaders['Retry-After'] | Should -Be @('5')
+    }
+
+    It 'does not classify pagination JSON parsing errors as HTTP failures' {
+        $nextLink = 'https://example.crm.dynamics.com/api/data/v9.2/accounts?$skiptoken=next'
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith {
+            if ($Uri -eq $nextLink) {
+                return New-PSDVPublicTestWebResponse -Payload '<html>invalid JSON</html>'
+            }
+            return New-PSDVPublicTestWebResponse -Payload @{
+                value = @(@{ name = 'First' }); '@odata.nextLink' = $nextLink
+            }
+        }
+        $caught = $null
+        try { Invoke-PSDVWebRequest -WebUri 'accounts' -ErrorAction Stop }
+        catch { $caught = $_ }
+
+        $caught.Exception.Message | Should -BeLike '*Pagination failed after retrieving 1 record(s).*'
+        $caught.FullyQualifiedErrorId | Should -Not -BeLike 'PSDVHttpError*'
+        $caught.Exception.Data.Contains('PSDVHttpError') | Should -BeFalse
+    }
+
+    It 'exposes a distinct failure ID and original exception for transport failures' -ForEach @(
+        @{ Exception = [System.Net.Http.HttpRequestException]::new('Connection failed') }
+        @{ Exception = [System.Threading.Tasks.TaskCanceledException]::new('Request timed out') }
+    ) {
+        Mock -CommandName Invoke-WebRequest -ModuleName Dataverse -MockWith { throw $Exception }
+        $caught = $null
+        try { Invoke-PSDVWebRequest -WebUri 'accounts' -Method Patch -ErrorAction Stop }
+        catch { $caught = $_ }
+
+        $caught.FullyQualifiedErrorId | Should -BeLike 'PSDVWebRequestFailed*'
+        $caught.Exception.Data.Contains('PSDVHttpError') | Should -BeFalse
+        [object]::ReferenceEquals($caught.Exception.InnerException, $Exception) | Should -BeTrue
+    }
 }

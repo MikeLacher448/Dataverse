@@ -5,6 +5,14 @@
 ### Added
 
 - Added optional `Invoke-PSDVWebRequest -SkipHttpErrorCheck`, forwarded on initial and pagination requests. Combine it with `-ReturnRawResponse` to inspect non-success HTTP status codes, headers, and bodies, including HTTP 412 for conditional PATCH requests. Existing HTTP-error behavior is unchanged when omitted or false, and transport failures still throw. Without raw output, existing JSON parsing and response-mode rules still apply.
+- Added `Update-PSDVTableItem -IfMatch` for ETag-conditional PATCH requests with either `-Table` or `-EntitySet`. Specific ETags protect the retrieved version; `*` requires existence without protecting against intervening edits. Explicit blank conditions are rejected before requests.
+- Conditional `-ReturnItem` updates now require the PATCH row representation and server ETag, without a follow-up GET. Missing output raises `PSDVUpdateRepresentationMissing` or `PSDVUpdateETagMissing`; the write may already have succeeded.
+- Added opt-in live concurrency coverage and deterministic tests for competing updates, wildcard behavior, and preservation of validation, lookup parsing, and `-WhatIf`.
+
+### Changed
+
+- `Invoke-PSDVWebRequest` now exposes terminating error IDs `PSDVPreconditionFailed` (HTTP 412), `PSDVHttpError` (other HTTP failures), and `PSDVWebRequestFailed` (request/transport failures without a response). HTTP details are available at `Exception.Data['PSDVHttpError']`, including integer status, Dataverse code/message, response headers/body, method, and URI; the original request exception is retained as `InnerException`. Logical-table resolution preserves these errors.
+- Default HTTP throwing behavior and skip/raw-response modes remain unchanged. No automatic retries or condition refreshes are performed; uncertain write outcomes require caller reconciliation.
 
 ## Version 1.1.2
 

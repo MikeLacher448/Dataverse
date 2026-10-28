@@ -261,7 +261,7 @@ Access tokens are refreshed automatically by Dataverse operations when they are 
 - `Invoke-PSDVWebRequest` - Execute authenticated web requests, with optional `-MaxPageSize` and `-AsPages` support for large paged result sets, and `-SkipHttpErrorCheck` to inspect HTTP error responses
 - `Get-PSDVTableItem` - Retrieve records from tables
 - `New-PSDVTableItem` - Create new records
-- `Update-PSDVTableItem` - Update existing records
+- `Update-PSDVTableItem` - Update records, optionally conditioned on an opaque ETag with `-IfMatch`
 - `Invoke-PSDVTableItemUpsert` - Upsert one record by alternate key, with optional create-only behavior
 - `New-PSDVTableItemBatch` - Create multiple records in one Dataverse batch request
 - `Update-PSDVTableItemBatch` - Update multiple records by ID in one Dataverse batch request
@@ -337,6 +337,120 @@ elseif ($response.StatusCode -ge 400) {
 The switch only skips HTTP-status error checks; transport failures (such as connection failures or timeouts) still throw. Omitting the switch or passing `-SkipHttpErrorCheck:$false` preserves the default behavior.
 
 `-SkipHttpErrorCheck` can also be used without `-ReturnRawResponse`. Normal JSON parsing, collection, and page-output rules still apply, including parsing errors for non-JSON bodies. It is forwarded on both the initial request and subsequent pagination requests.
+
+### ETag-Based Optimistic Concurrency
+
+Use the row's `@odata.etag` unchanged to avoid overwriting a concurrent edit. Both `-Table` and `-EntitySet` support `-IfMatch`.
+
+```powershell
+$row = Get-PSDVTableItem -EntitySet accounts -ItemID $accountId
+
+try {
+    $updatedRow = Update-PSDVTableItem `
+        -EntitySet accounts `
+        -ItemID $accountId `
+        -ItemData @{ name = 'Updated name' } `
+        -IfMatch $row.'@odata.etag' `
+        -ReturnItem `
+        -ErrorAction Stop
+
+    $newETag = $updatedRow.'@odata.etag'
+}
+catch {
+    if ($_.FullyQualifiedErrorId -like 'PSDVPreconditionFailed*') {
+        $details = $_.Exception.Data['PSDVHttpError']
+        Write-Warning "Concurrency conflict (HTTP $($details.HttpStatusCode)); skip or reconcile."
+    }
+    else {
+        throw
+    }
+}
+```
+
+| `-IfMatch` value | Meaning |
+| --- | --- |
+| Specific ETag, such as `W/"123456"` | Update only the retrieved row version. Dataverse optimistic concurrency must be enabled for the table. |
+| `*` | Update only if the row exists. This does **not** prevent overwriting intervening edits. A missing row returns HTTP 404 rather than being created. |
+| Omitted | Preserve the existing unconditional request behavior. |
+
+Explicit null, empty, and whitespace-only conditions are rejected before any request. ETags are opaque: the module does not trim, quote, or convert the supplied value. Existing field validation, lookup parsing, and `-WhatIf` behavior remain supported; `-WhatIf` prevents the PATCH but can still read metadata.
+
+`-ReturnItem` requests `Prefer: odata.include-annotations="*",return=representation`. With `-IfMatch`, the returned PATCH body must contain the persisted row and a nonblank string `@odata.etag`. The module does not mutate the original row, fabricate an ETag, or issue a follow-up GET that could observe another writer. Missing representations or ETags terminate with `PSDVUpdateRepresentationMissing` or `PSDVUpdateETagMissing`. **The write may already have succeeded when response validation fails.** Unconditional `-ReturnItem` behavior is unchanged.
+
+Conditional writes are never automatically retried, refreshed with a newer ETag, or downgraded to unconditional writes. A connection failure or timeout can occur after a write commits; it does not confirm success or a concurrency conflict. The application owns re-reading and deciding whether its business operation can safely resume. Blind replay can return HTTP 412 even if the original attempt succeeded.
+
+### Structured Request Errors
+
+By default, `Invoke-PSDVWebRequest` raises terminating PowerShell error records for HTTP failures. Update commands preserve this contract. Match `FullyQualifiedErrorId` prefixes, since PowerShell may append command context:
+
+| Error ID prefix | Meaning |
+| --- | --- |
+| `PSDVPreconditionFailed` | HTTP 412; category `ResourceBusy`. |
+| `PSDVHttpError` | Other HTTP failures; category `InvalidOperation`. Inspect the numeric status to distinguish 401, 403, 404, 429, and server failures. |
+| `PSDVWebRequestFailed` | Request/transport failure without a received HTTP response; no fabricated HTTP status. |
+
+For HTTP failures, `$_.Exception.Data['PSDVHttpError']` contains:
+
+| Property | Contract |
+| --- | --- |
+| `HttpStatusCode` | Integer HTTP status code. |
+| `DataverseErrorCode` | Server `error.code` string, or null when absent. |
+| `DataverseErrorMessage` | Server `error.message` string, or null when absent. |
+| `ResponseHeaders` | Case-insensitive dictionary of header names to string arrays, including diagnostic response/content headers and `Retry-After` when supplied. |
+| `ResponseBody` | Response text, including non-JSON content; native error details are used when content is unavailable. |
+| `Method` | Effective method of the failed request. |
+| `RequestUri` | Failed request URI, including the actual continuation URI for pagination failures. |
+
+For example, inside a catch block:
+
+```powershell
+$details = $_.Exception.Data['PSDVHttpError']
+if ($null -ne $details) {
+    $details.HttpStatusCode
+    $details.DataverseErrorCode
+    $details.DataverseErrorMessage
+    $details.ResponseHeaders['x-ms-service-request-id']
+}
+$originalException = $_.Exception.InnerException
+```
+
+The original native request exception is retained as `InnerException`; outgoing authorization headers and bearer tokens are not copied into the structured data. Empty or malformed HTTP error bodies do not replace the HTTP failure with a JSON parsing error. Ordinary successful-response JSON parsing errors remain distinct.
+
+This improves the previous string-only error API: error IDs and structured exception data are now documented, while exception-message text is not a stable contract. Requests still throw by default. `-SkipHttpErrorCheck` and `-ReturnRawResponse` retain their existing behavior; bypassing the HTTP check returns the response through normal handling rather than creating a structured HTTP error.
+
+### Running Concurrency Tests
+
+The focused unit tests use deterministic HTTP fixtures and a stateful competing-writer mock:
+
+```powershell
+Import-Module Pester -MinimumVersion 5.0
+Invoke-Pester -Path .\tests\Private\New-PSDVWebRequestErrorRecord.Tests.ps1,
+    .\tests\Public\Invoke-PSDVWebRequest.Tests.ps1,
+    .\tests\Public\Update-PSDVTableItem.Tests.ps1
+```
+
+The Integration-tagged test is skipped by default. It creates and deletes uniquely identified test-owned rows and launches two workers using the same original ETag. Use **only a disposable Dataverse test environment**, with a dedicated table that has optimistic concurrency enabled and permits creation with its primary ID and one writable text column. It must not require additional fields or plug-in side effects.
+
+Before opting in, configure these process environment variables through your local secret-management or CI mechanism:
+
+| Variable | Required value |
+| --- | --- |
+| `PSDV_INTEGRATION_ORG_URL` | Test organization's HTTPS URL. |
+| `PSDV_INTEGRATION_ACCESS_TOKEN` | Short-lived bearer JWT for that organization, with enough remaining validity and test-table permissions. Do not commit or log it. |
+| `PSDV_INTEGRATION_ENTITY_SET` | Dedicated test table's entity set name. |
+| `PSDV_INTEGRATION_TEXT_COLUMN` | Writable text column used for test payloads. |
+
+```powershell
+$env:PSDV_RUN_INTEGRATION_TESTS = '1'
+try {
+    Invoke-Pester -Path .\tests\Integration\Update-PSDVTableItem.Concurrency.Tests.ps1 -Tag Integration
+}
+finally {
+    Remove-Item Env:\PSDV_RUN_INTEGRATION_TESTS
+}
+```
+
+Explicit opt-in with missing prerequisites fails clearly. A skipped live test is not evidence that server-side concurrency was verified.
 
 ### Working with Lookup Fields
 
